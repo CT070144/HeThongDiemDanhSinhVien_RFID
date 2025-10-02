@@ -1,0 +1,2 @@
+- Khi nhấn chưa xử lý ở trang dọc rfid nó ẩn nhưng chưa xóa trong db
+- Khi điểm danh ngoài giờ học hệ thống đang set ca1 7h
