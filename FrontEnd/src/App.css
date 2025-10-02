@@ -1,0 +1,86 @@
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.navbar-brand {
+  font-weight: bold;
+}
+
+.card {
+  margin-bottom: 20px;
+}
+
+.table-responsive {
+  margin-top: 20px;
+}
+
+.btn-group {
+  margin: 5px;
+}
+
+.form-control {
+  margin-bottom: 10px;
+}
+
+.alert {
+  margin-top: 20px;
+}
+
+.rfid-display {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #007bff;
+  margin: 20px 0;
+}
+
+.attendance-status {
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 0.8rem;
+  font-weight: bold;
+}
+
+.status-muon {
+  background-color: #ffc107;
+  color: #000;
+}
+
+.status-dang_hoc {
+  background-color: #28a745;
+  color: #fff;
+}
+
+.status-da_ra_ve {
+  background-color: #6c757d;
+  color: #fff;
+}

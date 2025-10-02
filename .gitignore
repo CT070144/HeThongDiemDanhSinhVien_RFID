@@ -1,0 +1,16 @@
+# Node modules
+node_modules/
+FrontEnd/node_modules/
+
+# IDE settings
+.idea/
+BackEnd/.idea/
+
+# Build outputs
+target/
+BackEnd/target/
+
+# OS files
+.DS_Store
+Thumbs.db
+
