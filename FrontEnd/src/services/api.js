@@ -24,17 +24,27 @@ export const studentAPI = {
 export const attendanceAPI = {
   getAll: () => api.get('/attendance'),
   getToday: () => api.get('/attendance/today'),
-  getByFilters: (ngay, ca, maSinhVien) => {
+  getByFilters: (ngay, ca, maSinhVien, phongHoc) => {
     const params = new URLSearchParams();
     if (ngay) params.append('ngay', ngay);
     if (ca) params.append('ca', ca);
     if (maSinhVien) params.append('maSinhVien', maSinhVien);
+    if (phongHoc) params.append('phongHoc', phongHoc);
     return api.get(`/attendance/filter?${params.toString()}`);
   },
   getByStudent: (maSinhVien) => api.get(`/attendance/student/${maSinhVien}`),
-  processRfid: (rfid) => api.post('/attendance/rfid', { rfid }),
+  processRfid: (rfid, maThietBi) => api.post('/attendance/rfid', { rfid, maThietBi }),
   getUnprocessedRfids: () => api.get('/attendance/unprocessed-rfids'),
   markProcessed: (id) => api.put(`/attendance/mark-processed/${id}`),
+};
+
+// Device API
+export const deviceAPI = {
+  getAll: () => api.get('/thietbi'),
+  getOne: (maThietBi) => api.get(`/thietbi/${maThietBi}`),
+  create: (data) => api.post('/thietbi', data),
+  update: (maThietBi, data) => api.put(`/thietbi/${maThietBi}`, data),
+  delete: (maThietBi) => api.delete(`/thietbi/${maThietBi}`),
 };
 
 export default api;

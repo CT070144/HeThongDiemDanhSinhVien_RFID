@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-import { studentAPI, attendanceAPI } from '../services/api';
+import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -11,6 +11,9 @@ const Dashboard = () => {
     currentCa: 1
   });
   const [todayAttendance, setTodayAttendance] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(5);
+  const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const loadDashboardData = useCallback(async () => {
@@ -40,6 +43,9 @@ const Dashboard = () => {
       });
 
       setTodayAttendance(todayAttendance);
+      setPage(1);
+      const devicesRes = await deviceAPI.getAll();
+      setDevices(devicesRes.data || []);
     } catch (error) {
       toast.error('Lỗi khi tải dữ liệu dashboard');
     } finally {
@@ -156,7 +162,9 @@ const Dashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {todayAttendance.map((record) => (
+                        {todayAttendance
+                          .slice((page - 1) * pageSize, page * pageSize)
+                          .map((record) => (
                           <tr key={record.id}>
                             <td>{record.rfid}</td>
                             <td>{record.maSinhVien}</td>
@@ -173,6 +181,23 @@ const Dashboard = () => {
                     <Alert variant="info">
                       Chưa có điểm danh nào hôm nay.
                     </Alert>
+                  )}
+                  {todayAttendance.length > 0 && (
+                    <div className="d-flex justify-content-between align-items-center mt-3">
+                      <div>Trang {page}</div>
+                      <div className="d-flex gap-2">
+                        <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                          Trước
+                        </Button>
+                        <Button
+                          variant="outline-secondary"
+                          disabled={todayAttendance.length <= page * pageSize}
+                          onClick={() => setPage((p) => p + 1)}
+                        >
+                          Sau
+                        </Button>
+                      </div>
+                    </div>
                   )}
                 </Card.Body>
               </Card>

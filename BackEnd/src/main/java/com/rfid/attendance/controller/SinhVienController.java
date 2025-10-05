@@ -1,6 +1,7 @@
 package com.rfid.attendance.controller;
 
 import com.rfid.attendance.entity.SinhVien;
+import com.rfid.attendance.repository.DocRfidRepository;
 import com.rfid.attendance.service.SinhVienService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,6 +19,8 @@ public class SinhVienController {
     
     @Autowired
     private SinhVienService sinhVienService;
+    @Autowired
+    private DocRfidRepository docRfidRepository;
     
     @GetMapping
     public ResponseEntity<List<SinhVien>> getAllSinhVien() {
@@ -54,6 +57,12 @@ public class SinhVienController {
     public ResponseEntity<?> createSinhVien(@Valid @RequestBody SinhVien sinhVien) {
         try {
             SinhVien createdSinhVien = sinhVienService.createSinhVien(sinhVien);
+            docRfidRepository.findByRfid(sinhVien.getRfid()).ifPresent(doc -> {
+                doc.setMaSinhVien(sinhVien.getMaSinhVien());
+                doc.setTenSinhVien(sinhVien.getTenSinhVien());
+                doc.setProcessed(true);
+                docRfidRepository.save(doc);
+            });
             return ResponseEntity.status(HttpStatus.CREATED).body(createdSinhVien);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -66,6 +75,11 @@ public class SinhVienController {
     public ResponseEntity<?> updateSinhVien(@PathVariable String rfid, @Valid @RequestBody SinhVien sinhVienDetails) {
         try {
             SinhVien updatedSinhVien = sinhVienService.updateSinhVien(rfid, sinhVienDetails);
+            docRfidRepository.findByRfid(updatedSinhVien.getRfid()).ifPresent(doc -> {
+                doc.setMaSinhVien(updatedSinhVien.getMaSinhVien());
+                doc.setTenSinhVien(updatedSinhVien.getTenSinhVien());
+                docRfidRepository.save(doc);
+            });
             return ResponseEntity.ok(updatedSinhVien);
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -78,6 +92,7 @@ public class SinhVienController {
     public ResponseEntity<?> deleteSinhVien(@PathVariable String rfid) {
         try {
             sinhVienService.deleteSinhVien(rfid);
+            docRfidRepository.findByRfid(rfid).ifPresent(doc -> docRfidRepository.delete(doc));
             return ResponseEntity.ok().build();
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest().body(e.getMessage());

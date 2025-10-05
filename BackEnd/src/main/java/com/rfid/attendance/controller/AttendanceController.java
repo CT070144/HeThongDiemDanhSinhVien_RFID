@@ -46,9 +46,10 @@ public class AttendanceController {
     public ResponseEntity<List<PhieuDiemDanh>> getAttendanceByFilters(
             @RequestParam(required = false) LocalDate ngay,
             @RequestParam(required = false) Integer ca,
-            @RequestParam(required = false) String maSinhVien) {
+            @RequestParam(required = false) String maSinhVien,
+            @RequestParam(required = false) String phongHoc) {
         try {
-            List<PhieuDiemDanh> attendance = attendanceService.getAttendanceByFilters(ngay, ca, maSinhVien);
+            List<PhieuDiemDanh> attendance = attendanceService.getAttendanceByFilters(ngay, ca, maSinhVien, phongHoc);
             return ResponseEntity.ok(attendance);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -68,10 +69,13 @@ public class AttendanceController {
     @PostMapping("/rfid")
     public ResponseEntity<?> processRfidAttendance(@RequestBody RfidRequest request) {
         try {
-            PhieuDiemDanh attendance = attendanceService.processRfidAttendance(request.getRfid());
-            return ResponseEntity.ok(attendance);
+            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(request.getRfid(), request.getMaThietBi());
+            if (attendance.getId() == null) {
+                return ResponseEntity.ok(new RfidResponse("not_found", ""));
+            }
+            return ResponseEntity.ok(new RfidResponse("found", attendance.getTenSinhVien()));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
+            return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -100,6 +104,7 @@ public class AttendanceController {
     // Inner class for request body
     public static class RfidRequest {
         private String rfid;
+        private String maThietBi;
         
         public String getRfid() {
             return rfid;
@@ -108,5 +113,17 @@ public class AttendanceController {
         public void setRfid(String rfid) {
             this.rfid = rfid;
         }
+        public String getMaThietBi() { return maThietBi; }
+        public void setMaThietBi(String maThietBi) { this.maThietBi = maThietBi; }
+    }
+
+    public static class RfidResponse {
+        private String status;
+        private String name;
+        public RfidResponse(String status, String name) {
+            this.status = status; this.name = name;
+        }
+        public String getStatus() { return status; }
+        public String getName() { return name; }
     }
 }

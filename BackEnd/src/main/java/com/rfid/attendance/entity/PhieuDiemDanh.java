@@ -27,6 +27,9 @@ public class PhieuDiemDanh {
     @NotBlank(message = "Tên sinh viên không được để trống")
     private String tenSinhVien;
     
+    @Column(name = "phonghoc", length = 50)
+    private String phongHoc;
+    
     @Column(name = "giovao")
     private LocalTime gioVao;
     
@@ -129,6 +132,14 @@ public class PhieuDiemDanh {
     
     public void setTenSinhVien(String tenSinhVien) {
         this.tenSinhVien = tenSinhVien;
+    }
+    
+    public String getPhongHoc() {
+        return phongHoc;
+    }
+    
+    public void setPhongHoc(String phongHoc) {
+        this.phongHoc = phongHoc;
     }
     
     public LocalTime getGioVao() {

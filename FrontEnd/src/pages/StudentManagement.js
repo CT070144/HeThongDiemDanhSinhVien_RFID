@@ -6,6 +6,8 @@ import { studentAPI } from '../services/api';
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
   const [filteredStudents, setFilteredStudents] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editingStudent, setEditingStudent] = useState(null);
@@ -40,6 +42,7 @@ const StudentManagement = () => {
     try {
       const response = await studentAPI.getAll();
       setStudents(response.data);
+      setPage(1);
     } catch (error) {
       toast.error('Lỗi khi tải danh sách sinh viên');
     }
@@ -95,7 +98,7 @@ const StudentManagement = () => {
         toast.success('Xóa sinh viên thành công');
         loadStudents();
       } catch (error) {
-        toast.error(error.response?.data || 'Có lỗi xảy ra');
+        toast.error('Lỗi khi xóa sinh viên! Ràng buộc liên quan');
       }
     }
   };
@@ -142,7 +145,9 @@ const StudentManagement = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredStudents.map((student) => (
+                  {filteredStudents
+                    .slice((page - 1) * pageSize, page * pageSize)
+                    .map((student) => (
                     <tr key={student.rfid}>
                       <td>{student.rfid}</td>
                       <td>{student.maSinhVien}</td>
@@ -174,6 +179,28 @@ const StudentManagement = () => {
                 <Alert variant="info">
                   Không có sinh viên nào được tìm thấy.
                 </Alert>
+              )}
+
+              {filteredStudents.length > 0 && (
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div>Trang {page}</div>
+                  <div className="d-flex gap-2">
+                    <Button
+                      variant="outline-secondary"
+                      disabled={page === 1}
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    >
+                      Trước
+                    </Button>
+                    <Button
+                      variant="outline-secondary"
+                      disabled={filteredStudents.length <= page * pageSize}
+                      onClick={() => setPage((p) => p + 1)}
+                    >
+                      Sau
+                    </Button>
+                  </div>
+                </div>
               )}
             </Card.Body>
           </Card>

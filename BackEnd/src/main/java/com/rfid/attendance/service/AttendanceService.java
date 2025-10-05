@@ -3,9 +3,11 @@ package com.rfid.attendance.service;
 import com.rfid.attendance.entity.DocRfid;
 import com.rfid.attendance.entity.PhieuDiemDanh;
 import com.rfid.attendance.entity.SinhVien;
+import com.rfid.attendance.entity.ThietBi;
 import com.rfid.attendance.repository.DocRfidRepository;
 import com.rfid.attendance.repository.PhieuDiemDanhRepository;
 import com.rfid.attendance.repository.SinhVienRepository;
+import com.rfid.attendance.repository.ThietBiRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -28,13 +30,16 @@ public class AttendanceService {
     
     @Autowired
     private DocRfidRepository docRfidRepository;
+
+    @Autowired
+    private ThietBiRepository thietBiRepository;
     
     public List<PhieuDiemDanh> getAllAttendance() {
         return phieuDiemDanhRepository.findAll();
     }
     
-    public List<PhieuDiemDanh> getAttendanceByFilters(LocalDate ngay, Integer ca, String maSinhVien) {
-        return phieuDiemDanhRepository.findByFilters(ngay, ca, maSinhVien);
+    public List<PhieuDiemDanh> getAttendanceByFilters(LocalDate ngay, Integer ca, String maSinhVien, String phongHoc) {
+        return phieuDiemDanhRepository.findByFilters(ngay, ca, maSinhVien, phongHoc);
     }
     
     public List<PhieuDiemDanh> getTodayAttendance() {
@@ -58,6 +63,9 @@ public class AttendanceService {
         SinhVien sinhVien = sinhVienOpt.get();
         LocalDate today = LocalDate.now();
         Integer currentCa = getCurrentCa();
+        if (currentCa == 0) {
+            throw new RuntimeException("Ngoài giờ học");
+        }
         
         // Tìm phiếu điểm danh hiện tại
         Optional<PhieuDiemDanh> existingRecord = phieuDiemDanhRepository
@@ -90,6 +98,19 @@ public class AttendanceService {
             return phieuDiemDanhRepository.save(newRecord);
         }
     }
+
+    public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
+        PhieuDiemDanh record = processRfidAttendance(rfid);
+        if (record.getId() == null) return record;
+        if (maThietBi != null && !maThietBi.isEmpty()) {
+            Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
+            tb.ifPresent(thietBi -> {
+                record.setPhongHoc(thietBi.getPhongHoc());
+                phieuDiemDanhRepository.save(record);
+            });
+        }
+        return record;
+    }
     
     private Integer getCurrentCa() {
         LocalTime currentTime = LocalTime.now();
@@ -100,11 +121,11 @@ public class AttendanceService {
             return 2;
         } else if (currentTime.isAfter(LocalTime.of(12, 30)) && currentTime.isBefore(LocalTime.of(15, 0))) {
             return 3;
-        } else if (currentTime.isAfter(LocalTime.of(15, 0)) && currentTime.isBefore(LocalTime.of(17, 30))) {
+        } else if (currentTime.isAfter(LocalTime.of(15, 0)) && currentTime.isBefore(LocalTime.of(22, 30))) {
             return 4;
         } else {
-            // Ngoài giờ học, mặc định ca 1
-            return 1;
+            // Ngoài giờ học
+            return 0;
         }
     }
     
@@ -142,8 +163,7 @@ public class AttendanceService {
         Optional<DocRfid> docRfidOpt = docRfidRepository.findById(id);
         if (docRfidOpt.isPresent()) {
             DocRfid docRfid = docRfidOpt.get();
-            docRfid.setProcessed(true);
-            docRfidRepository.save(docRfid);
+            docRfidRepository.delete(docRfid);
         }
     }
     @Transactional(propagation = Propagation.REQUIRES_NEW)

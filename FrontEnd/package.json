@@ -16,10 +16,11 @@
     "react-router-dom": "^6.3.0",
     "react-scripts": "^5.0.1",
     "react-toastify": "^9.0.8",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "xlsx": "^0.18.5"
   },
   "scripts": {
-    "start": "react-scripts start",
+    "start": "set DANGEROUSLY_DISABLE_HOST_CHECK=true && react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -42,5 +43,8 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:8080"
+  "proxy": "http://localhost:8080",
+  "devDependencies": {
+    "react-app-rewired": "^2.2.1"
+  }
 }

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "docrfid1")
+@Table(name = "docrfid")
 public class DocRfid {
     
     @Id

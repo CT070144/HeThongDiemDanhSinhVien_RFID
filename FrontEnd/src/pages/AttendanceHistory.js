@@ -1,15 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge } from 'react-bootstrap';
+import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import { attendanceAPI } from '../services/api';
 
 const AttendanceHistory = () => {
   const [attendance, setAttendance] = useState([]);
   const [filteredAttendance, setFilteredAttendance] = useState([]);
+  const [allFilteredAttendance, setAllFilteredAttendance] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize] = useState(10);
   const [filters, setFilters] = useState({
     ngay: '',
     ca: '',
-    maSinhVien: ''
+    maSinhVien: '',
+    phongHoc: ''
   });
 
   useEffect(() => {
@@ -47,8 +52,15 @@ const AttendanceHistory = () => {
       );
     }
 
-    setFilteredAttendance(filtered);
-  }, [attendance, filters]);
+    if (filters.phongHoc) {
+      filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
+    }
+
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    setAllFilteredAttendance(filtered);
+    setFilteredAttendance(filtered.slice(start, end));
+  }, [attendance, filters, page, pageSize]);
 
   useEffect(() => {
     filterAttendance();
@@ -62,6 +74,7 @@ const AttendanceHistory = () => {
       // tránh spam toast do polling liên tục
       // toast.error('Lỗi khi tải lịch sử điểm danh');
     }
+  console.log(allFilteredAttendance);
   };
 
 
@@ -77,19 +90,44 @@ const AttendanceHistory = () => {
     setFilters({
       ngay: '',
       ca: '',
-      maSinhVien: ''
+      maSinhVien: '',
+      phongHoc: ''
     });
   };
 
   const getStatusBadge = (trangThai) => {
     const statusMap = {
-      'muon': { variant: 'warning', text: 'Muộn' },
-      'dang_hoc': { variant: 'success', text: 'Đang học' },
-      'da_ra_ve': { variant: 'secondary', text: 'Đã ra về' }
+      'MUON': { variant: 'warning', text: 'Muộn' },
+      'DANG_HOC': { variant: 'success', text: 'Đúng giờ' },
+      'DA_RA_VE': { variant: 'secondary', text: 'Đã ra về' }
     };
-    
     const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
     return <Badge bg={status.variant}>{status.text}</Badge>;
+  };
+
+  const exportCsv = () => {
+    const data = (allFilteredAttendance.length ? allFilteredAttendance : attendance).map(r => ({
+      RFID: r.rfid,
+      MaSinhVien: r.maSinhVien,
+      TenSinhVien: r.tenSinhVien,
+      PhongHoc: r.phongHoc || '',
+      Ngay: r.ngay,
+      Ca: r.ca,
+      GioVao: r.gioVao || '',
+      GioRa: r.gioRa || '',
+      ThờiGianTạo: r.createdAt
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'attendance.csv');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const getCaName = (ca) => {
@@ -107,8 +145,9 @@ const AttendanceHistory = () => {
       <Row>
         <Col>
           <Card>
-            <Card.Header>
+            <Card.Header className="d-flex justify-content-between align-items-center">
               <h3>Lịch sử điểm danh</h3>
+              <Button variant="outline-success" onClick={exportCsv}>Xuất CSV</Button>
             </Card.Header>
             <Card.Body>
               {/* Bộ lọc */}
@@ -152,6 +191,18 @@ const AttendanceHistory = () => {
                     />
                   </Form.Group>
                 </Col>
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label>Phòng học</Form.Label>
+                    <Form.Control
+                      type="text"
+                      name="phongHoc"
+                      value={filters.phongHoc}
+                      onChange={handleFilterChange}
+                      placeholder="Nhập phòng học..."
+                    />
+                  </Form.Group>
+                </Col>
                 <Col md={3} className="d-flex align-items-end">
                   <Button variant="outline-secondary" onClick={clearFilters}>
                     Xóa bộ lọc
@@ -166,6 +217,7 @@ const AttendanceHistory = () => {
                     <th>RFID</th>
                     <th>Mã sinh viên</th>
                     <th>Tên sinh viên</th>
+                    <th>Phòng học</th>
                     <th>Ngày</th>
                     <th>Ca</th>
                     <th>Giờ vào</th>
@@ -180,6 +232,7 @@ const AttendanceHistory = () => {
                       <td>{record.rfid}</td>
                       <td>{record.maSinhVien}</td>
                       <td>{record.tenSinhVien}</td>
+                      <td>{record.phongHoc || '-'}</td>
                       <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
                       <td>{getCaName(record.ca)}</td>
                       <td>{record.gioVao || '-'}</td>
@@ -196,6 +249,15 @@ const AttendanceHistory = () => {
                   Không có dữ liệu điểm danh nào được tìm thấy.
                 </Alert>
               )}
+
+              {/* Pagination */}
+              <div className="d-flex justify-content-between align-items-center mt-3">
+                <div>Trang {page}</div>
+                <div className="d-flex gap-2">
+                  <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Trước</Button>
+                  <Button variant="outline-secondary" disabled={attendance.length <= page * pageSize} onClick={() => setPage(p => p + 1)}>Sau</Button>
+                </div>
+              </div>
 
               {/* Thống kê */}
               <Row className="mt-4">
@@ -217,7 +279,7 @@ const AttendanceHistory = () => {
                         <Col md={3}>
                           <div className="text-center">
                             <h4 className="text-success">
-                              {filteredAttendance.filter(r => r.trangThai === 'dang_hoc').length}
+                              {filteredAttendance.filter(r => r.trangThai === 'DANG_HOC').length}
                             </h4>
                             <p>Đang học</p>
                           </div>
@@ -225,7 +287,7 @@ const AttendanceHistory = () => {
                         <Col md={3}>
                           <div className="text-center">
                             <h4 className="text-warning">
-                              {filteredAttendance.filter(r => r.trangThai === 'muon').length}
+                              {filteredAttendance.filter(r => r.trangThai === 'MUON').length}
                             </h4>
                             <p>Điểm danh muộn</p>
                           </div>
@@ -233,7 +295,7 @@ const AttendanceHistory = () => {
                         <Col md={3}>
                           <div className="text-center">
                             <h4 className="text-secondary">
-                              {filteredAttendance.filter(r => r.trangThai === 'da_ra_ve').length}
+                              {filteredAttendance.filter(r => r.trangThai === 'DA_RA_VE').length}
                             </h4>
                             <p>Đã ra về</p>
                           </div>

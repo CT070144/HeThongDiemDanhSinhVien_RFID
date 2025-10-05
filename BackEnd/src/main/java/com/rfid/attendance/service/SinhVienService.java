@@ -1,6 +1,8 @@
 package com.rfid.attendance.service;
 
 import com.rfid.attendance.entity.SinhVien;
+import com.rfid.attendance.repository.DocRfidRepository;
+import com.rfid.attendance.repository.PhieuDiemDanhRepository;
 import com.rfid.attendance.repository.SinhVienRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,10 @@ public class SinhVienService {
     
     @Autowired
     private SinhVienRepository sinhVienRepository;
+    @Autowired
+    private DocRfidRepository docRfidRepository;
+    @Autowired
+    private PhieuDiemDanhRepository phieuDiemDanhRepository;
     
     public List<SinhVien> getAllSinhVien() {
         return sinhVienRepository.findAll();
@@ -58,14 +64,26 @@ public class SinhVienService {
         sinhVien.setMaSinhVien(sinhVienDetails.getMaSinhVien());
         sinhVien.setTenSinhVien(sinhVienDetails.getTenSinhVien());
         
-        return sinhVienRepository.save(sinhVien);
+        SinhVien saved = sinhVienRepository.save(sinhVien);
+        // Sync to docrfid1
+        docRfidRepository.findByRfid(saved.getRfid()).ifPresent(doc -> {
+            doc.setMaSinhVien(saved.getMaSinhVien());
+            doc.setTenSinhVien(saved.getTenSinhVien());
+            docRfidRepository.save(doc);
+        });
+        // Sync to phieudiemdanh
+        phieuDiemDanhRepository.updateStudentInfoByRfid(saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien());
+        return saved;
     }
     
     public void deleteSinhVien(String rfid) {
         if (!sinhVienRepository.existsByRfid(rfid)) {
             throw new RuntimeException("Không tìm thấy sinh viên với RFID: " + rfid);
         }
+        // Delete related records
         sinhVienRepository.deleteById(rfid);
+        docRfidRepository.findByRfid(rfid).ifPresent(docRfidRepository::delete);
+        phieuDiemDanhRepository.deleteByRfid(rfid);
     }
     
     public boolean existsByRfid(String rfid) {
