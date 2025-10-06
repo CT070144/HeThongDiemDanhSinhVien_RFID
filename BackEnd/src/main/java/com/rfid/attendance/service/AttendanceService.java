@@ -115,7 +115,7 @@ public class AttendanceService {
     private Integer getCurrentCa() {
         LocalTime currentTime = LocalTime.now();
         
-        if (currentTime.isAfter(LocalTime.of(7, 0)) && currentTime.isBefore(LocalTime.of(9, 30))) {
+        if (currentTime.isAfter(LocalTime.of(0, 0)) && currentTime.isBefore(LocalTime.of(9, 30))) {
             return 1;
         } else if (currentTime.isAfter(LocalTime.of(9, 30)) && currentTime.isBefore(LocalTime.of(12, 0))) {
             return 2;

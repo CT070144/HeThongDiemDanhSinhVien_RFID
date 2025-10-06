@@ -13,7 +13,7 @@ public interface DocRfidRepository extends JpaRepository<DocRfid, Long> {
     
     Optional<DocRfid> findByRfid(String rfid);
     
-    @Query("SELECT d FROM DocRfid d WHERE d.processed = false ORDER BY d.createdAt DESC")
+    @Query("SELECT d FROM DocRfid d ORDER BY d.createdAt DESC")
     List<DocRfid> findUnprocessedRfids();
     
     boolean existsByRfid(String rfid);
