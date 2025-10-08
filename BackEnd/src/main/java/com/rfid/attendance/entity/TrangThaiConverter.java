@@ -21,7 +21,8 @@ public class TrangThaiConverter implements AttributeConverter<PhieuDiemDanh.Tran
             case "dang_hoc":
                 return PhieuDiemDanh.TrangThai.DANG_HOC;
             case "da_ra_ve":
-                return PhieuDiemDanh.TrangThai.DA_RA_VE;
+                // Convert old DA_RA_VE status to DANG_HOC
+                return PhieuDiemDanh.TrangThai.DANG_HOC;
             default:
                 // Không khớp, mặc định đang học
                 return PhieuDiemDanh.TrangThai.DANG_HOC;

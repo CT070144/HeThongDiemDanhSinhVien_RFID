@@ -124,7 +124,7 @@ const SettingsPage = () => {
             .scan-dot.d3 { animation-delay: .4s }
           `}</style>
           <Tabs defaultActiveKey="read" className="mb-3">
-            <Tab eventKey="read" title="Đọc RFID">
+            <Tab eventKey="read" title="Quét RFID">
               <Card>
                 <Card.Header className="d-flex justify-content-between align-items-center">
                   <div>Nhận các RFID được quét</div>

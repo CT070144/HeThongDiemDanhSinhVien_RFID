@@ -6,6 +6,7 @@ import StudentManagement from './pages/StudentManagement';
 import AttendanceHistory from './pages/AttendanceHistory';
 import RfidReader from './pages/RfidReader';
 import Dashboard from './pages/Dashboard';
+import LopHocPhanManagement from './pages/LopHocPhanManagement';
 import './App.css';
 
 function App() {
@@ -17,6 +18,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/students" element={<StudentManagement />} />
+            <Route path="/lophocphan" element={<LopHocPhanManagement />} />
             <Route path="/attendance" element={<AttendanceHistory />} />
             <Route path="/rfid-reader" element={<RfidReader />} />
           </Routes>

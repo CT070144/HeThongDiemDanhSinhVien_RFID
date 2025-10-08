@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -98,6 +99,52 @@ public class AttendanceController {
             return ResponseEntity.ok().build();
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @GetMapping("/debug/rfid/{rfid}")
+    public ResponseEntity<?> debugRfid(@PathVariable String rfid) {
+        try {
+            // Debug thông tin RFID
+            System.out.println("=== DEBUG RFID API ===");
+            System.out.println("RFID nhận được: '" + rfid + "'");
+            System.out.println("Độ dài: " + rfid.length());
+            
+            // Tìm sinh viên
+            var sinhVienOpt = attendanceService.getSinhVienRepository().findByRfid(rfid.trim());
+            
+            if (sinhVienOpt.isPresent()) {
+                var sinhVien = sinhVienOpt.get();
+                return ResponseEntity.ok(Map.of(
+                    "status", "found",
+                    "rfid", rfid,
+                    "student", Map.of(
+                        "maSinhVien", sinhVien.getMaSinhVien(),
+                        "tenSinhVien", sinhVien.getTenSinhVien(),
+                        "rfid", sinhVien.getRfid()
+                    )
+                ));
+            } else {
+                // Hiển thị tất cả RFID trong database để debug
+                var allStudents = attendanceService.getSinhVienRepository().findAll();
+                List<Map<String, String>> allRfids = allStudents.stream()
+                    .map(s -> Map.of(
+                        "rfid", s.getRfid(),
+                        "maSinhVien", s.getMaSinhVien(),
+                        "tenSinhVien", s.getTenSinhVien()
+                    ))
+                    .collect(java.util.stream.Collectors.toList());
+                
+                return ResponseEntity.ok(Map.of(
+                    "status", "not_found",
+                    "searched_rfid", rfid,
+                    "total_students", allStudents.size(),
+                    "all_rfids", allRfids
+                ));
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", e.getMessage()));
         }
     }
     
