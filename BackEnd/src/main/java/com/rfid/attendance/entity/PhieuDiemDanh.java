@@ -57,8 +57,7 @@ public class PhieuDiemDanh {
     
     public enum TrangThai {
         MUON("muon", "Điểm danh muộn"),
-        DANG_HOC("dang_hoc", "Đang học"),
-        DA_RA_VE("da_ra_ve", "Đã ra về");
+        DANG_HOC("dang_hoc", "Đang học");
         
         private final String code;
         private final String description;

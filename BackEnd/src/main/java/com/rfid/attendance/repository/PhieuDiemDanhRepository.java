@@ -51,8 +51,9 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
-    @Query("UPDATE PhieuDiemDanh p SET p.maSinhVien = :maSinhVien, p.tenSinhVien = :tenSinhVien WHERE p.rfid = :rfid")
-    int updateStudentInfoByRfid(@Param("rfid") String rfid,
+    @Query("UPDATE PhieuDiemDanh p SET p.rfid = :newRfid, p.maSinhVien = :maSinhVien, p.tenSinhVien = :tenSinhVien WHERE p.rfid = :oldRfid")
+    int updateStudentInfoByRfid(@Param("oldRfid") String oldRfid,
+                                @Param("newRfid") String newRfid,
                                 @Param("maSinhVien") String maSinhVien,
                                 @Param("tenSinhVien") String tenSinhVien);
 

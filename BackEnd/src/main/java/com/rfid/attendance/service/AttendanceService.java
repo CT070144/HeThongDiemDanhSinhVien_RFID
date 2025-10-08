@@ -51,32 +51,63 @@ public class AttendanceService {
     }
     
     public PhieuDiemDanh processRfidAttendance(String rfid) {
-        // Kiểm tra sinh viên có tồn tại không
-        Optional<SinhVien> sinhVienOpt = sinhVienRepository.findByRfid(rfid);
+        // Log thông tin debug
+        System.out.println("=== RFID ATTENDANCE DEBUG ===");
+        System.out.println("RFID nhận được: '" + rfid + "'");
+        System.out.println("Độ dài RFID: " + (rfid != null ? rfid.length() : "null"));
+        System.out.println("RFID trimmed: '" + (rfid != null ? rfid.trim() : "null") + "'");
         
-        if (!sinhVienOpt.isPresent()) {
-            // Nếu không tồn tại, lưu vào bảng doc_rfid (transaction riêng) và trả lỗi nghiệp vụ
+        // Trim RFID để tránh lỗi do khoảng trắng
+        String trimmedRfid = rfid != null ? rfid.trim() : "";
+        if (trimmedRfid.isEmpty()) {
+            System.out.println("RFID rỗng hoặc null");
             saveUnregisteredRfid(rfid);
             return new PhieuDiemDanh();
         }
         
+        // Kiểm tra sinh viên có tồn tại không
+        Optional<SinhVien> sinhVienOpt = sinhVienRepository.findByRfid(trimmedRfid);
+        System.out.println("Kết quả tìm kiếm sinh viên: " + (sinhVienOpt.isPresent() ? "Tìm thấy" : "Không tìm thấy"));
+        
+        if (!sinhVienOpt.isPresent()) {
+            System.out.println("Không tìm thấy sinh viên với RFID: " + trimmedRfid);
+            
+            // Debug: Kiểm tra tất cả RFID trong database
+            List<SinhVien> allStudents = sinhVienRepository.findAll();
+            System.out.println("Tổng số sinh viên trong DB: " + allStudents.size());
+            System.out.println("Danh sách RFID trong DB:");
+            for (SinhVien sv : allStudents) {
+                System.out.println("- '" + sv.getRfid() + "' (độ dài: " + sv.getRfid().length() + ")");
+            }
+            
+            // Nếu không tồn tại, lưu vào bảng doc_rfid (transaction riêng) và trả lỗi nghiệp vụ
+            saveUnregisteredRfid(trimmedRfid);
+            return new PhieuDiemDanh();
+        }
+        
         SinhVien sinhVien = sinhVienOpt.get();
+        System.out.println("Tìm thấy sinh viên: " + sinhVien.getTenSinhVien() + " (Mã: " + sinhVien.getMaSinhVien() + ")");
+        
         LocalDate today = LocalDate.now();
         Integer currentCa = getCurrentCa();
+        System.out.println("Ngày hiện tại: " + today + ", Ca hiện tại: " + currentCa);
+        
         if (currentCa == 0) {
+            System.out.println("Ngoài giờ học");
             throw new RuntimeException("Ngoài giờ học");
         }
         
         // Tìm phiếu điểm danh hiện tại
         Optional<PhieuDiemDanh> existingRecord = phieuDiemDanhRepository
-                .findByRfidAndNgayAndCa(rfid, today, currentCa);
+                .findByRfidAndNgayAndCa(trimmedRfid, today, currentCa);
         
         if (existingRecord.isPresent()) {
+            System.out.println("tồn tại record");
             // Đã có bản ghi, cập nhật giờ ra
             PhieuDiemDanh record = existingRecord.get();
             if (record.getGioRa() == null) {
                 record.setGioRa(LocalTime.now());
-                record.setTrangThai(PhieuDiemDanh.TrangThai.DA_RA_VE);
+                // Không thay đổi trạng thái, giữ nguyên trạng thái hiện tại (MUON hoặc DANG_HOC)
                 return phieuDiemDanhRepository.save(record);
             } else {
                 throw new RuntimeException("Sinh viên đã điểm danh ra trong ca này");
@@ -87,7 +118,7 @@ public class AttendanceService {
             PhieuDiemDanh.TrangThai trangThai = determineAttendanceStatus(currentTime, currentCa);
             
             PhieuDiemDanh newRecord = new PhieuDiemDanh();
-            newRecord.setRfid(rfid);
+            newRecord.setRfid(trimmedRfid);
             newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
             newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
             newRecord.setGioVao(currentTime);
@@ -95,6 +126,7 @@ public class AttendanceService {
             newRecord.setCa(currentCa);
             newRecord.setTrangThai(trangThai);
             
+            System.out.println("Tạo phiếu điểm danh mới: " + newRecord.getTenSinhVien() + " - Ca " + currentCa);
             return phieuDiemDanhRepository.save(newRecord);
         }
     }
@@ -115,13 +147,13 @@ public class AttendanceService {
     private Integer getCurrentCa() {
         LocalTime currentTime = LocalTime.now();
         
-        if (currentTime.isAfter(LocalTime.of(7, 0)) && currentTime.isBefore(LocalTime.of(9, 30))) {
+        if (currentTime.isAfter(LocalTime.of(0, 0)) && currentTime.isBefore(LocalTime.of(9, 30))) {
             return 1;
         } else if (currentTime.isAfter(LocalTime.of(9, 30)) && currentTime.isBefore(LocalTime.of(12, 0))) {
             return 2;
         } else if (currentTime.isAfter(LocalTime.of(12, 30)) && currentTime.isBefore(LocalTime.of(15, 0))) {
             return 3;
-        } else if (currentTime.isAfter(LocalTime.of(15, 0)) && currentTime.isBefore(LocalTime.of(22, 30))) {
+        } else if (currentTime.isAfter(LocalTime.of(15, 0)) && currentTime.isBefore(LocalTime.of(23, 55))) {
             return 4;
         } else {
             // Ngoài giờ học
@@ -172,5 +204,10 @@ public class AttendanceService {
             DocRfid d = new DocRfid(rfid);
             docRfidRepository.save(d);
         }
+    }
+    
+    // Getter cho repository để debug
+    public SinhVienRepository getSinhVienRepository() {
+        return sinhVienRepository;
     }
 }

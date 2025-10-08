@@ -31,11 +31,14 @@ const CustomNavbar = () => {
             <LinkContainer to="/students">
               <Nav.Link>Quản lý sinh viên</Nav.Link>
             </LinkContainer>
+            <LinkContainer to="/lophocphan">
+              <Nav.Link>Lớp học phần</Nav.Link>
+            </LinkContainer>
             <LinkContainer to="/attendance">
               <Nav.Link>Lịch sử điểm danh</Nav.Link>
             </LinkContainer>
             <LinkContainer to="/rfid-reader">
-              <Nav.Link>Đọc RFID</Nav.Link>
+              <Nav.Link>Thiết lập RFID</Nav.Link>
             </LinkContainer>
           </Nav>
         </Navbar.Collapse>

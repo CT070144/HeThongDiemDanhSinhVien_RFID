@@ -11,8 +11,11 @@ import java.util.Optional;
 
 @Repository
 public interface SinhVienRepository extends JpaRepository<SinhVien, String> {
-    
-    Optional<SinhVien> findByRfid(String rfid);
+
+
+
+    @Query("SELECT s FROM SinhVien s WHERE TRIM(s.rfid) = TRIM(:rfid)")
+    Optional<SinhVien> findByRfid(@Param("rfid") String rfid);
     
     Optional<SinhVien> findByMaSinhVien(String maSinhVien);
     
@@ -24,4 +27,6 @@ public interface SinhVienRepository extends JpaRepository<SinhVien, String> {
     boolean existsByRfid(String rfid);
     
     boolean existsByMaSinhVien(String maSinhVien);
+    
+    List<SinhVien> findByMaSinhVienIn(List<String> maSinhViens);
 }

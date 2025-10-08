@@ -6,12 +6,13 @@ import { attendanceAPI, studentAPI, deviceAPI } from '../services/api';
 const SettingsPage = () => {
   const [unprocessedRfids, setUnprocessedRfids] = useState([]);
   const [page, setPage] = useState(1);
-  const pageSize = 20;
+  const pageSize = 8;
   const [showModal, setShowModal] = useState(false);
   const [scannedInfo, setScannedInfo] = useState({ rfid: '', name: '', maSinhVien: '', status: '' });
   const [polling, setPolling] = useState(false);
   const [devices, setDevices] = useState([]);
   const [newDevice, setNewDevice] = useState({ maThietBi: '', phongHoc: '' });
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     loadUnprocessedRfids();
@@ -97,6 +98,12 @@ const SettingsPage = () => {
     }
   };
 
+  const filteredRfids = unprocessedRfids.filter(item => {
+    if (statusFilter === 'registered') return !!item.processed;
+    if (statusFilter === 'unregistered') return !item.processed;
+    return true;
+  });
+
   return (
     <Container>
       <Row>
@@ -117,11 +124,16 @@ const SettingsPage = () => {
             .scan-dot.d3 { animation-delay: .4s }
           `}</style>
           <Tabs defaultActiveKey="read" className="mb-3">
-            <Tab eventKey="read" title="Đọc RFID">
+            <Tab eventKey="read" title="Quét RFID">
               <Card>
                 <Card.Header className="d-flex justify-content-between align-items-center">
                   <div>Nhận các RFID được quét</div>
-                  <div>
+                  <div className="d-flex align-items-center gap-2">
+                    <Form.Select size="sm" style={{width: 190}} value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+                      <option value="all">Tất cả trạng thái</option>
+                      <option value="registered">Đã đăng ký</option>
+                      <option value="unregistered">Chưa đăng ký</option>
+                    </Form.Select>
                     <Button size="sm" variant={polling ? 'danger' : 'success'} onClick={() => setPolling(!polling)}>
                       {polling ? 'Dừng quét' : 'Quét RFID'}
                     </Button>
@@ -160,7 +172,7 @@ const SettingsPage = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {unprocessedRfids.slice((page-1)*pageSize, page*pageSize).map((rfid) => (
+                      {filteredRfids.slice((page-1)*pageSize, page*pageSize).map((rfid) => (
                         <tr key={rfid.id}>
                           <td>{rfid.id}</td>
                           <td><code className="rfid-display">{rfid.rfid}</code></td>
@@ -183,7 +195,7 @@ const SettingsPage = () => {
                     </tbody>
                   </Table>
 
-                  {unprocessedRfids.length === 0 && (
+                  {filteredRfids.length === 0 && (
                     <Alert variant="success">Không có RFID nào chưa được đăng ký.</Alert>
                   )}
 
@@ -191,7 +203,7 @@ const SettingsPage = () => {
                     <div>Trang {page}</div>
                     <div className="d-flex gap-2">
                       <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Trước</Button>
-                      <Button variant="outline-secondary" disabled={unprocessedRfids.length <= page * pageSize} onClick={() => setPage(p => p + 1)}>Sau</Button>
+                      <Button variant="outline-secondary" disabled={filteredRfids.length <= page * pageSize} onClick={() => setPage(p => p + 1)}>Sau</Button>
                     </div>
                   </div>
                 </Card.Body>

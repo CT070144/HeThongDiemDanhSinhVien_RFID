@@ -1,28 +1,35 @@
 package com.rfid.attendance.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "sinhvien")
-@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
-public class SinhVien {
+@Table(name = "sinhvienlophocphan")
+@IdClass(SinhVienLopHocPhanId.class)
+public class SinhVienLopHocPhan {
     
     @Id
     @Column(name = "masinhvien", length = 20)
     @NotBlank(message = "Mã sinh viên không được để trống")
     private String maSinhVien;
     
-    @Column(name = "rfid", length = 50, unique = true)
-    @NotBlank(message = "RFID không được để trống")
-    private String rfid;
+    @Id
+    @Column(name = "malophocphan", length = 50)
+    @NotBlank(message = "Mã lớp học phần không được để trống")
+    private String maLopHocPhan;
     
-    @Column(name = "tensinhvien", length = 100)
-    @NotBlank(message = "Tên sinh viên không được để trống")
-    private String tenSinhVien;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "masinhvien", insertable = false, updatable = false)
+    @JsonIgnore
+    private SinhVien sinhVien;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "malophocphan", insertable = false, updatable = false)
+    @JsonIgnore
+    private LopHocPhan lopHocPhan;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -42,23 +49,14 @@ public class SinhVien {
     }
     
     // Constructors
-    public SinhVien() {}
+    public SinhVienLopHocPhan() {}
     
-    public SinhVien(String maSinhVien, String rfid, String tenSinhVien) {
+    public SinhVienLopHocPhan(String maSinhVien, String maLopHocPhan) {
         this.maSinhVien = maSinhVien;
-        this.rfid = rfid;
-        this.tenSinhVien = tenSinhVien;
+        this.maLopHocPhan = maLopHocPhan;
     }
     
     // Getters and Setters
-    public String getRfid() {
-        return rfid;
-    }
-    
-    public void setRfid(String rfid) {
-        this.rfid = rfid;
-    }
-    
     public String getMaSinhVien() {
         return maSinhVien;
     }
@@ -67,12 +65,28 @@ public class SinhVien {
         this.maSinhVien = maSinhVien;
     }
     
-    public String getTenSinhVien() {
-        return tenSinhVien;
+    public String getMaLopHocPhan() {
+        return maLopHocPhan;
     }
     
-    public void setTenSinhVien(String tenSinhVien) {
-        this.tenSinhVien = tenSinhVien;
+    public void setMaLopHocPhan(String maLopHocPhan) {
+        this.maLopHocPhan = maLopHocPhan;
+    }
+    
+    public SinhVien getSinhVien() {
+        return sinhVien;
+    }
+    
+    public void setSinhVien(SinhVien sinhVien) {
+        this.sinhVien = sinhVien;
+    }
+    
+    public LopHocPhan getLopHocPhan() {
+        return lopHocPhan;
+    }
+    
+    public void setLopHocPhan(LopHocPhan lopHocPhan) {
+        this.lopHocPhan = lopHocPhan;
     }
     
     public LocalDateTime getCreatedAt() {

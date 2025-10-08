@@ -34,6 +34,7 @@ public class ThietBiController {
         if (thietBiRepository.existsById(tb.getMaThietBi())) {
             return ResponseEntity.status(HttpStatus.CONFLICT).body("Mã thiết bị đã tồn tại");
         }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(thietBiRepository.save(tb));
     }
 
