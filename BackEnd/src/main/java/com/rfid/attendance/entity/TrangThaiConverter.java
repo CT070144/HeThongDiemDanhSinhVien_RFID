@@ -16,16 +16,19 @@ public class TrangThaiConverter implements AttributeConverter<PhieuDiemDanh.Tran
     public PhieuDiemDanh.TrangThai convertToEntityAttribute(String dbData) {
         if (dbData == null) return null;
         switch (dbData) {
+            case "dung_gio":
+                return PhieuDiemDanh.TrangThai.DUNG_GIO;
             case "muon":
                 return PhieuDiemDanh.TrangThai.MUON;
             case "dang_hoc":
-                return PhieuDiemDanh.TrangThai.DANG_HOC;
+                // Convert old DANG_HOC status to DUNG_GIO
+                return PhieuDiemDanh.TrangThai.DUNG_GIO;
             case "da_ra_ve":
-                // Convert old DA_RA_VE status to DANG_HOC
-                return PhieuDiemDanh.TrangThai.DANG_HOC;
+                // Convert old DA_RA_VE status to DUNG_GIO
+                return PhieuDiemDanh.TrangThai.DUNG_GIO;
             default:
-                // Không khớp, mặc định đang học
-                return PhieuDiemDanh.TrangThai.DANG_HOC;
+                // Không khớp, mặc định đúng giờ
+                return PhieuDiemDanh.TrangThai.DUNG_GIO;
         }
     }
 }

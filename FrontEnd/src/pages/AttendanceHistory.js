@@ -15,7 +15,9 @@ const AttendanceHistory = () => {
     totalStudents: 0,
     attended: 0,
     absent: 0,
-    late: 0
+    late: 0,
+    dangHoc: 0,
+    daRaVe: 0
   });
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -62,7 +64,7 @@ const AttendanceHistory = () => {
     if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
       // Không filter gì cả nếu thiếu ngày hoặc ca
       setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0 });
+      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0 });
       setAllFilteredAttendance([]);
       setFilteredAttendance([]);
       return;
@@ -102,7 +104,7 @@ const AttendanceHistory = () => {
       }
     } else {
       setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0 });
+      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0 });
     }
 
     const start = (page - 1) * pageSize;
@@ -114,17 +116,23 @@ const AttendanceHistory = () => {
   const calculateAttendanceStats = (studentsInLop, attendanceRecords) => {
     const totalStudents = studentsInLop.length;
     const attendedStudents = new Set(attendanceRecords.map(r => r.maSinhVien));
-    const lateStudents = new Set(attendanceRecords.filter(r => r.trangThai === 'MUON').map(r => r.maSinhVien));
+    const lateStudents = new Set(attendanceRecords.filter(r => r.tinhTrangDiemDanh === 'muon').map(r => r.maSinhVien));
+    const dangHocStudents = new Set(attendanceRecords.filter(r => r.trangThai === 'DANG_HOC').map(r => r.maSinhVien));
+    const daRaVeStudents = new Set(attendanceRecords.filter(r => r.trangThai === 'DA_RA_VE').map(r => r.maSinhVien));
     
     const attended = attendedStudents.size;
     const late = lateStudents.size;
     const absent = totalStudents - attended;
+    const dangHoc = dangHocStudents.size;
+    const daRaVe = daRaVeStudents.size;
 
     setAttendanceStats({
       totalStudents,
       attended,
       absent,
-      late
+      late,
+      dangHoc,
+      daRaVe
     });
   };
 
@@ -165,7 +173,7 @@ const AttendanceHistory = () => {
   const getStatusBadge = (trangThai) => {
     const statusMap = {
       'MUON': { variant: 'warning', text: 'Muộn' },
-      'DANG_HOC': { variant: 'success', text: 'Đúng giờ' }
+      'DUNG_GIO': { variant: 'success', text: 'Đúng giờ' }
     };
     const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
     return <Badge bg={status.variant}>{status.text}</Badge>;
@@ -206,7 +214,7 @@ const AttendanceHistory = () => {
       headerInfo.push(['', '', '', '', 'LỊCH SỬ ĐIỂM DANH SINH VIÊN', '', '', '', '', '', '']);
       headerInfo.push(['', '', '', '', `Xuất ngày: ${new Date().toLocaleDateString('vi-VN')}`, '', '', '', '', '', '']);
       headerInfo.push([]);
-      headerInfo.push(['RFID', 'Mã sinh viên', 'Tên sinh viên', 'Phòng học', 'Ngày', 'Ca', 'Giờ vào', 'Giờ ra', 'Trạng thái', 'Thời gian tạo']);
+      headerInfo.push(['RFID', 'Mã sinh viên', 'Tên sinh viên', 'Phòng học', 'Ngày', 'Ca', 'Giờ vào', 'Giờ ra', 'Tình trạng điểm danh', 'Thời gian tạo']);
     }
     
     // Create attendance data
@@ -217,24 +225,33 @@ const AttendanceHistory = () => {
       data = studentsInLop.map((student, index) => {
         const attendanceRecord = allFilteredAttendance.find(r => r.maSinhVien === student.maSinhVien);
         let diemDanh = 'v'; // vắng mặc định
+        let rowStyle = null; // Không có màu nền mặc định
         
         if (attendanceRecord) {
-          if (attendanceRecord.trangThai === 'MUON') {
+          if (attendanceRecord.tinhTrangDiemDanh === 'muon' || attendanceRecord.tinhTrangDiemDanh === 'MUON') {
             diemDanh = 'M'; // muộn
+            rowStyle = { fill: { fgColor: { rgb: 'FFFFE0' } } }; // Vàng nhạt
           } else {
             diemDanh = 'x'; // có mặt
           }
+        } else {
+          // Vắng mặt - tô màu đỏ nhạt
+          diemDanh = 'v'; // vắng
+          rowStyle = { fill: { fgColor: { rgb: 'FFE6E6' } } }; // Đỏ nhạt
         }
         
-        return [
-          index + 1,
-          student.maSinhVien,
-          student.tenSinhVien,
-          diemDanh
-        ];
+        return {
+          data: [
+            index + 1,
+            student.maSinhVien,
+            student.tenSinhVien,
+            diemDanh
+          ],
+          style: rowStyle
+        };
       });
     } else {
-      // Export all attendance records
+      // Export all attendance records (không xuất cột trạng thái đang học/đã ra về)
       data = (allFilteredAttendance.length ? allFilteredAttendance : attendance).map(r => [
         r.rfid,
         r.maSinhVien,
@@ -244,13 +261,24 @@ const AttendanceHistory = () => {
         r.ca,
         r.gioVao || '',
         r.gioRa || '',
-        r.trangThai,
+        r.tinhTrangDiemDanh === 'dung_gio' ? 'Đúng giờ' : r.tinhTrangDiemDanh === 'muon' ? 'Muộn' : r.tinhTrangDiemDanh,
         new Date(r.createdAt).toLocaleString('vi-VN')
       ]);
     }
     
     // Combine header and data
-    const allData = [...headerInfo, ...data];
+    let allData = [...headerInfo];
+    
+    // Add data with proper formatting for class-specific export
+    if (filters.lopHocPhan && studentsInLop.length > 0) {
+      // For class-specific export, add data rows
+      data.forEach(item => {
+        allData.push(item.data);
+      });
+    } else {
+      // For general export, add all data
+      allData = [...allData, ...data];
+    }
     
     // Add statistics if filtering by class
     if (filters.lopHocPhan && attendanceStats.totalStudents > 0) {
@@ -260,9 +288,61 @@ const AttendanceHistory = () => {
       allData.push([`Số sinh viên tham gia: ${attendanceStats.attended}`, '', '', '', '']);
       allData.push([`Số sinh viên vắng: ${attendanceStats.absent}`, '', '', '', '']);
       allData.push([`Số sinh viên muộn: ${attendanceStats.late}`, '', '', '', '']);
+      allData.push([`Số sinh viên đang học: ${attendanceStats.dangHoc}`, '', '', '', '']);
+      allData.push([`Số sinh viên đã ra về: ${attendanceStats.daRaVe}`, '', '', '', '']);
     }
     
-    const ws = XLSX.utils.aoa_to_sheet(allData);
+    let ws;
+    
+    // For class-specific export with styling, create HTML table and convert to Excel
+    if (filters.lopHocPhan && studentsInLop.length > 0) {
+      // Create HTML table with styling
+      let htmlTable = '<table border="1" style="border-collapse: collapse;">';
+      
+      // Add header rows
+      headerInfo.forEach(row => {
+        htmlTable += '<tr>';
+        row.forEach(cell => {
+          htmlTable += `<td style="font-weight: bold; text-align: center; background-color: #f0f0f0; padding: 5px;">${cell || ''}</td>`;
+        });
+        htmlTable += '</tr>';
+      });
+      
+      // Add data rows with styling
+      data.forEach(item => {
+        const backgroundColor = item.style?.fill?.fgColor?.rgb === 'FFFFE0' ? '#FFFFE0' : 
+                               item.style?.fill?.fgColor?.rgb === 'FFE6E6' ? '#FFE6E6' : '';
+        
+        htmlTable += '<tr>';
+        item.data.forEach(cell => {
+          const style = backgroundColor ? `style="background-color: ${backgroundColor}; padding: 5px;"` : 'style="padding: 5px;"';
+          htmlTable += `<td ${style}>${cell}</td>`;
+        });
+        htmlTable += '</tr>';
+      });
+      
+      // Add statistics rows
+      if (attendanceStats.totalStudents > 0) {
+        htmlTable += '<tr><td colspan="4"></td></tr>';
+        htmlTable += '<tr><td style="font-weight: bold;" colspan="4">THỐNG KÊ:</td></tr>';
+        htmlTable += `<tr><td colspan="4">Tổng số sinh viên: ${attendanceStats.totalStudents}</td></tr>`;
+        htmlTable += `<tr><td colspan="4">Số sinh viên tham gia: ${attendanceStats.attended}</td></tr>`;
+        htmlTable += `<tr><td colspan="4">Số sinh viên vắng: ${attendanceStats.absent}</td></tr>`;
+        htmlTable += `<tr><td colspan="4">Số sinh viên muộn: ${attendanceStats.late}</td></tr>`;
+        htmlTable += `<tr><td colspan="4">Số sinh viên đang học: ${attendanceStats.dangHoc}</td></tr>`;
+        htmlTable += `<tr><td colspan="4">Số sinh viên đã ra về: ${attendanceStats.daRaVe}</td></tr>`;
+      }
+      
+      htmlTable += '</table>';
+      
+      // Convert HTML table to worksheet
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = htmlTable;
+      ws = XLSX.utils.table_to_sheet(tempDiv.querySelector('table'));
+    } else {
+      // For general export, use regular method
+      ws = XLSX.utils.aoa_to_sheet(allData);
+    }
     
     // Style the worksheet
     if (filters.lopHocPhan) {
@@ -284,7 +364,7 @@ const AttendanceHistory = () => {
         { width: 8 },   // Ca
         { width: 12 },  // Giờ vào
         { width: 12 },  // Giờ ra
-        { width: 15 },  // Trạng thái
+        { width: 20 },  // Tình trạng điểm danh
         { width: 20 }   // Thời gian tạo
       ];
     }
@@ -308,12 +388,31 @@ const AttendanceHistory = () => {
 
   const getCaName = (ca) => {
     const caMap = {
-      1: 'Ca 1 (07:00-09:30)',
-      2: 'Ca 2 (09:30-12:00)',
-      3: 'Ca 3 (12:30-15:00)',
-      4: 'Ca 4 (15:00-17:30)'
+      1: 'Ca 1 (07:00-09:25)',
+      2: 'Ca 2 (09:35-12:00)',
+      3: 'Ca 3 (12:30-14:55)',
+      4: 'Ca 4 (15:05-17:30)',
+      5: 'Ca 5 (18:00-20:30)'
     };
     return caMap[ca] || `Ca ${ca}`;
+  };
+
+  const getAttendanceStatusBadge = (tinhTrangDiemDanh) => {
+    const statusMap = {
+      'DUNG_GIO': { variant: 'success', text: 'Đúng giờ' },
+      'MUON': { variant: 'warning', text: 'Muộn' }
+    };
+    const status = statusMap[tinhTrangDiemDanh] || { variant: 'light', text: tinhTrangDiemDanh };
+    return <Badge bg={status.variant}>{status.text}</Badge>;
+  };
+
+  const getStudyStatusBadge = (trangThai) => {
+    const statusMap = {
+      'DANG_HOC': { variant: 'primary', text: 'Đang học' },
+      'DA_RA_VE': { variant: 'secondary', text: 'Đã ra về' }
+    };
+    const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
+    return <Badge bg={status.variant}>{status.text}</Badge>;
   };
 
   return (
@@ -348,10 +447,11 @@ const AttendanceHistory = () => {
                       onChange={handleFilterChange}
                     >
                       <option value="">Tất cả ca</option>
-                      <option value="1">Ca 1 (07:00-09:30)</option>
-                      <option value="2">Ca 2 (09:30-12:00)</option>
-                      <option value="3">Ca 3 (12:30-15:00)</option>
-                      <option value="4">Ca 4 (15:00-17:30)</option>
+                      <option value="1">Ca 1 (07:00-09:25)</option>
+                      <option value="2">Ca 2 (09:35-12:00)</option>
+                      <option value="3">Ca 3 (12:30-14:55)</option>
+                      <option value="4">Ca 4 (15:05-17:30)</option>
+                      <option value="5">Ca 5 (18:00-20:30)</option>
                     </Form.Select>
                   </Form.Group>
                 </Col>
@@ -430,6 +530,15 @@ const AttendanceHistory = () => {
                         <Badge bg="danger" className="me-2">
                           Vắng: {attendanceStats.absent}
                         </Badge>
+                        <Badge bg="warning" className="me-2">
+                          Muộn: {attendanceStats.late}
+                        </Badge>
+                        <Badge bg="info" className="me-2">
+                          Đang học: {attendanceStats.dangHoc}
+                        </Badge>
+                        <Badge bg="secondary" className="me-2">
+                          Đã ra về: {attendanceStats.daRaVe}
+                        </Badge>
                       </div>
                     </Alert>
                   </Col>
@@ -448,6 +557,7 @@ const AttendanceHistory = () => {
                     <th>Ca</th>
                     <th>Giờ vào</th>
                     <th>Giờ ra</th>
+                    <th>Tình trạng điểm danh</th>
                     <th>Trạng thái</th>
                     <th>Thời gian tạo</th>
                   </tr>
@@ -463,7 +573,8 @@ const AttendanceHistory = () => {
                       <td>{getCaName(record.ca)}</td>
                       <td>{record.gioVao || '-'}</td>
                       <td>{record.gioRa || '-'}</td>
-                      <td>{getStatusBadge(record.trangThai)}</td>
+                      <td>{getAttendanceStatusBadge(record.tinhTrangDiemDanh)}</td>
+                      <td>{getStudyStatusBadge(record.trangThai)}</td>
                       <td>{new Date(record.createdAt).toLocaleString('vi-VN')}</td>
                     </tr>
                   ))}
@@ -508,7 +619,7 @@ const AttendanceHistory = () => {
                         <Col md={4}>
                           <div className="text-center">
                             <h4 className="text-success">
-                              {filteredAttendance.filter(r => r.trangThai === 'DANG_HOC').length}
+                              {filteredAttendance.filter(r => r.tinhTrangDiemDanh === 'DUNG_GIO' || r.tinhTrangDiemDanh === 'dung_gio').length}
                             </h4>
                             <p>Đúng giờ</p>
                           </div>
@@ -516,7 +627,7 @@ const AttendanceHistory = () => {
                         <Col md={4}>
                           <div className="text-center">
                             <h4 className="text-warning">
-                              {filteredAttendance.filter(r => r.trangThai === 'MUON').length}
+                              {filteredAttendance.filter(r => r.tinhTrangDiemDanh === 'MUON' || r.tinhTrangDiemDanh === 'muon').length}
                             </h4>
                             <p>Điểm danh muộn</p>
                           </div>
