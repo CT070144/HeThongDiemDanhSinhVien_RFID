@@ -107,7 +107,7 @@ public class AttendanceService {
             PhieuDiemDanh record = existingRecord.get();
             if (record.getGioRa() == null) {
                 record.setGioRa(LocalTime.now());
-                // Không thay đổi trạng thái, giữ nguyên trạng thái hiện tại (MUON hoặc DANG_HOC)
+                record.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DA_RA_VE); // Cập nhật trạng thái đã ra về
                 return phieuDiemDanhRepository.save(record);
             } else {
                 throw new RuntimeException("Sinh viên đã điểm danh ra trong ca này");
@@ -115,7 +115,7 @@ public class AttendanceService {
         } else {
             // Tạo bản ghi mới
             LocalTime currentTime = LocalTime.now();
-            PhieuDiemDanh.TrangThai trangThai = determineAttendanceStatus(currentTime, currentCa);
+            PhieuDiemDanh.TrangThai tinhTrangDiemDanh = determineAttendanceStatus(currentTime, currentCa);
             
             PhieuDiemDanh newRecord = new PhieuDiemDanh();
             newRecord.setRfid(trimmedRfid);
@@ -124,7 +124,8 @@ public class AttendanceService {
             newRecord.setGioVao(currentTime);
             newRecord.setNgay(today);
             newRecord.setCa(currentCa);
-            newRecord.setTrangThai(trangThai);
+            newRecord.setTinhTrangDiemDanh(tinhTrangDiemDanh);
+            newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
             
             System.out.println("Tạo phiếu điểm danh mới: " + newRecord.getTenSinhVien() + " - Ca " + currentCa);
             return phieuDiemDanhRepository.save(newRecord);
@@ -147,15 +148,27 @@ public class AttendanceService {
     private Integer getCurrentCa() {
         LocalTime currentTime = LocalTime.now();
         
-        if (currentTime.isAfter(LocalTime.of(0, 0)) && currentTime.isBefore(LocalTime.of(9, 30))) {
+        // Ca 1: 7h - 9h25 (có thể điểm danh từ 6h50 - 9h35)
+        if (currentTime.isAfter(LocalTime.of(6, 50)) && currentTime.isBefore(LocalTime.of(9, 35))) {
             return 1;
-        } else if (currentTime.isAfter(LocalTime.of(9, 30)) && currentTime.isBefore(LocalTime.of(12, 0))) {
+        }
+        // Ca 2: 9h35 - 12h (có thể điểm danh từ 9h25 - 12h10)
+        else if (currentTime.isAfter(LocalTime.of(9, 25)) && currentTime.isBefore(LocalTime.of(12, 30))) {
             return 2;
-        } else if (currentTime.isAfter(LocalTime.of(12, 30)) && currentTime.isBefore(LocalTime.of(15, 0))) {
+        }
+        // Ca 3: 12h30 - 14h55 (có thể điểm danh từ 12h20 - 15h5)
+        else if (currentTime.isAfter(LocalTime.of(12, 20)) && currentTime.isBefore(LocalTime.of(15, 5))) {
             return 3;
-        } else if (currentTime.isAfter(LocalTime.of(15, 0)) && currentTime.isBefore(LocalTime.of(23, 55))) {
+        }
+        // Ca 4: 15h05 - 17h30 (có thể điểm danh từ 14h55 - 17h40)
+        else if (currentTime.isAfter(LocalTime.of(14, 55)) && currentTime.isBefore(LocalTime.of(17, 40))) {
             return 4;
-        } else {
+        }
+        // Ca 5: 18h - 20h30 (có thể điểm danh từ 17h50 - 20h40)
+        else if (currentTime.isAfter(LocalTime.of(17, 50)) && currentTime.isBefore(LocalTime.of(20, 40))) {
+            return 5;
+        }
+        else {
             // Ngoài giờ học
             return 0;
         }
@@ -164,27 +177,43 @@ public class AttendanceService {
     private PhieuDiemDanh.TrangThai determineAttendanceStatus(LocalTime currentTime, Integer ca) {
         switch (ca) {
             case 1:
-                if (currentTime.isAfter(LocalTime.of(7, 15))) {
+                // Ca 1: 7h - 9h25, đúng giờ nếu trước 7h, muộn nếu từ 7h trở đi
+                if (currentTime.isBefore(LocalTime.of(7, 0))) {
+                    return PhieuDiemDanh.TrangThai.DUNG_GIO;
+                } else {
                     return PhieuDiemDanh.TrangThai.MUON;
                 }
-                break;
             case 2:
-                if (currentTime.isAfter(LocalTime.of(9, 45))) {
+                // Ca 2: 9h35 - 12h, đúng giờ nếu trước 9h35, muộn nếu từ 9h35 trở đi
+                if (currentTime.isBefore(LocalTime.of(9, 35))) {
+                    return PhieuDiemDanh.TrangThai.DUNG_GIO;
+                } else {
                     return PhieuDiemDanh.TrangThai.MUON;
                 }
-                break;
             case 3:
-                if (currentTime.isAfter(LocalTime.of(12, 45))) {
+                // Ca 3: 12h30 - 14h55, đúng giờ nếu trước 12h30, muộn nếu từ 12h30 trở đi
+                if (currentTime.isBefore(LocalTime.of(12, 30))) {
+                    return PhieuDiemDanh.TrangThai.DUNG_GIO;
+                } else {
                     return PhieuDiemDanh.TrangThai.MUON;
                 }
-                break;
             case 4:
-                if (currentTime.isAfter(LocalTime.of(15, 15))) {
+                // Ca 4: 15h05 - 17h30, đúng giờ nếu trước 15h05, muộn nếu từ 15h05 trở đi
+                if (currentTime.isBefore(LocalTime.of(15, 5))) {
+                    return PhieuDiemDanh.TrangThai.DUNG_GIO;
+                } else {
                     return PhieuDiemDanh.TrangThai.MUON;
                 }
-                break;
+            case 5:
+                // Ca 5: 18h - 20h30, đúng giờ nếu trước 18h, muộn nếu từ 18h trở đi
+                if (currentTime.isBefore(LocalTime.of(18, 0))) {
+                    return PhieuDiemDanh.TrangThai.DUNG_GIO;
+                } else {
+                    return PhieuDiemDanh.TrangThai.MUON;
+                }
+            default:
+                return PhieuDiemDanh.TrangThai.DUNG_GIO;
         }
-        return PhieuDiemDanh.TrangThai.DANG_HOC;
     }
     
     public List<DocRfid> getUnprocessedRfids() {

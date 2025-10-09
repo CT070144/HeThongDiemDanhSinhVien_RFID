@@ -45,9 +45,13 @@ public class PhieuDiemDanh {
     private Integer ca;
     
     @Convert(converter = TrangThaiConverter.class)
-    @Column(name = "trangthai")
-    @NotNull(message = "Trạng thái không được để trống")
-    private TrangThai trangThai;
+    @Column(name = "tinhtrangdiemdanh")
+    @NotNull(message = "Tình trạng điểm danh không được để trống")
+    private TrangThai tinhTrangDiemDanh;
+    
+    @Column(name = "trangthai", length = 20)
+    @Enumerated(EnumType.STRING)
+    private TrangThaiHoc trangThai;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -56,8 +60,8 @@ public class PhieuDiemDanh {
     private LocalDateTime updatedAt;
     
     public enum TrangThai {
-        MUON("muon", "Điểm danh muộn"),
-        DANG_HOC("dang_hoc", "Đang học");
+        DUNG_GIO("dung_gio", "Điểm danh đúng giờ"),
+        MUON("muon", "Điểm danh muộn");
         
         private final String code;
         private final String description;
@@ -69,6 +73,21 @@ public class PhieuDiemDanh {
         
         public String getCode() {
             return code;
+        }
+        
+        public String getDescription() {
+            return description;
+        }
+    }
+    
+    public enum TrangThaiHoc {
+        DANG_HOC("Đang học"),
+        DA_RA_VE("Đã ra về");
+        
+        private final String description;
+        
+        TrangThaiHoc(String description) {
+            this.description = description;
         }
         
         public String getDescription() {
@@ -91,13 +110,14 @@ public class PhieuDiemDanh {
     public PhieuDiemDanh() {}
     
     public PhieuDiemDanh(String rfid, String maSinhVien, String tenSinhVien, 
-                         LocalDate ngay, Integer ca, TrangThai trangThai) {
+                         LocalDate ngay, Integer ca, TrangThai tinhTrangDiemDanh) {
         this.rfid = rfid;
         this.maSinhVien = maSinhVien;
         this.tenSinhVien = tenSinhVien;
         this.ngay = ngay;
         this.ca = ca;
-        this.trangThai = trangThai;
+        this.tinhTrangDiemDanh = tinhTrangDiemDanh;
+        this.trangThai = TrangThaiHoc.DANG_HOC; // Mặc định đang học khi tạo mới
     }
     
     // Getters and Setters
@@ -173,11 +193,19 @@ public class PhieuDiemDanh {
         this.ca = ca;
     }
     
-    public TrangThai getTrangThai() {
+    public TrangThai getTinhTrangDiemDanh() {
+        return tinhTrangDiemDanh;
+    }
+    
+    public void setTinhTrangDiemDanh(TrangThai tinhTrangDiemDanh) {
+        this.tinhTrangDiemDanh = tinhTrangDiemDanh;
+    }
+    
+    public TrangThaiHoc getTrangThai() {
         return trangThai;
     }
     
-    public void setTrangThai(TrangThai trangThai) {
+    public void setTrangThai(TrangThaiHoc trangThai) {
         this.trangThai = trangThai;
     }
     
