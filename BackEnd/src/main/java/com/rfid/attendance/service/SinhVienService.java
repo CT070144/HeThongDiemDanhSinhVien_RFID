@@ -10,6 +10,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @Transactional
@@ -68,15 +70,18 @@ public class SinhVienService {
         sinhVien.setTenSinhVien(sinhVienDetails.getTenSinhVien());
         
         SinhVien saved = sinhVienRepository.save(sinhVien);
-        
+        docRfidRepository.findByRfid(oldRfid).ifPresent(docRfid -> {
+            docRfidRepository.delete(docRfid);
+        });
         // Sync to docrfid (cập nhật RFID mới)
-        docRfidRepository.findByRfid(oldRfid).ifPresent(doc -> {
+        docRfidRepository.findByRfid(sinhVienDetails.getRfid()).ifPresent(doc -> {
+            System.out.println("vô đây r nèeeee");
             doc.setRfid(saved.getRfid());
             doc.setMaSinhVien(saved.getMaSinhVien());
             doc.setTenSinhVien(saved.getTenSinhVien());
             docRfidRepository.save(doc);
         });
-        
+
         // Sync to phieudiemdanh (cập nhật RFID mới)
         phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien());
         
@@ -101,5 +106,87 @@ public class SinhVienService {
     
     public boolean existsByMaSinhVien(String maSinhVien) {
         return sinhVienRepository.existsByMaSinhVien(maSinhVien);
+    }
+    
+    public Map<String, Object> bulkUpdateRfid(List<SinhVien> sinhVienList) {
+        Map<String, Object> result = new HashMap<>();
+        int successCount = 0;
+        int failureCount = 0;
+        List<String> errors = new java.util.ArrayList<>();
+        
+        for (SinhVien sinhVienData : sinhVienList) {
+            try {
+                Optional<SinhVien> existingSinhVien = sinhVienRepository.findByMaSinhVien(sinhVienData.getMaSinhVien());
+                
+                if (existingSinhVien.isPresent()) {
+                    // Cập nhật sinh viên đã tồn tại
+                    SinhVien sinhVien = existingSinhVien.get();
+                    String oldRfid = sinhVien.getRfid();
+                    
+                    // Kiểm tra RFID có bị trùng không (nếu thay đổi)
+                    if (!sinhVien.getRfid().equals(sinhVienData.getRfid()) &&
+                        sinhVienRepository.existsByRfid(sinhVienData.getRfid())) {
+                        throw new RuntimeException("RFID đã tồn tại: " + sinhVienData.getRfid());
+                    }
+                    
+                    sinhVien.setRfid(sinhVienData.getRfid());
+                    sinhVien.setTenSinhVien(sinhVienData.getTenSinhVien());
+                    
+                    SinhVien saved = sinhVienRepository.save(sinhVien);
+                    
+                    // Sync to docrfid - cập nhật RFID cũ nếu có
+                    docRfidRepository.findByRfid(oldRfid).ifPresent(doc -> {
+                        doc.setRfid(saved.getRfid());
+                        doc.setMaSinhVien(saved.getMaSinhVien());
+                        doc.setTenSinhVien(saved.getTenSinhVien());
+                        doc.setProcessed(true);
+                        docRfidRepository.save(doc);
+                        System.out.println("Đã cập nhật docrfid RFID cũ: " + oldRfid + " -> " + saved.getRfid() + " cho sinh viên: " + saved.getTenSinhVien());
+                    });
+                    
+                    // Kiểm tra và cập nhật docrfid với RFID mới nếu có
+                    docRfidRepository.findByRfid(saved.getRfid()).ifPresent(doc -> {
+                        doc.setMaSinhVien(saved.getMaSinhVien());
+                        doc.setTenSinhVien(saved.getTenSinhVien());
+                        doc.setProcessed(true);
+                        docRfidRepository.save(doc);
+                        System.out.println("Đã cập nhật docrfid RFID mới: " + saved.getRfid() + " cho sinh viên: " + saved.getTenSinhVien());
+                    });
+                    
+                    // Sync to phieudiemdanh
+                    phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien());
+                    
+                } else {
+                    // Tạo sinh viên mới
+                    if (sinhVienRepository.existsByRfid(sinhVienData.getRfid())) {
+                        throw new RuntimeException("RFID đã tồn tại: " + sinhVienData.getRfid());
+                    }
+                    
+                    SinhVien newSinhVien = sinhVienRepository.save(sinhVienData);
+                    
+                    // Sync to docrfid - kiểm tra và cập nhật trạng thái đã xử lý
+                    docRfidRepository.findByRfid(newSinhVien.getRfid()).ifPresent(doc -> {
+                        doc.setMaSinhVien(newSinhVien.getMaSinhVien());
+                        doc.setTenSinhVien(newSinhVien.getTenSinhVien());
+                        doc.setProcessed(true);
+                        docRfidRepository.save(doc);
+                        System.out.println("Đã cập nhật docrfid cho sinh viên mới: " + newSinhVien.getTenSinhVien() + " - RFID: " + newSinhVien.getRfid());
+                    });
+                }
+                
+                successCount++;
+                
+            } catch (Exception e) {
+                failureCount++;
+                errors.add("Sinh viên " + sinhVienData.getMaSinhVien() + ": " + e.getMessage());
+            }
+        }
+        
+        result.put("totalProcessed", sinhVienList.size());
+        result.put("successCount", successCount);
+        result.put("failureCount", failureCount);
+        result.put("errors", errors);
+        
+        return result;
     }
 }

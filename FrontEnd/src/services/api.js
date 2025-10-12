@@ -46,6 +46,7 @@ export const studentAPI = {
   update: (rfid, student) => api.put(`/sinhvien/${rfid}`, student),
   delete: (rfid) => api.delete(`/sinhvien/${rfid}`),
   checkExists: (rfid) => api.get(`/sinhvien/exists/${rfid}`),
+  bulkUpdateRfid: (studentList) => api.post('/sinhvien/bulk-update-rfid', studentList),
 };
 
 // Attendance API
