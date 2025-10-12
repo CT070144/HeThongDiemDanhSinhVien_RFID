@@ -1,2 +1,5 @@
 - Khi nhấn đã xử lý ở trang dọc rfid nó ẩn nhưng chưa xóa trong db
 - Khi điểm danh ngoài giờ học hệ thống đang set ca1 7h
+- diêm danh vao , khong diem danh ra
+- ve truoc gio 20p
+- import sinh vien rfid
