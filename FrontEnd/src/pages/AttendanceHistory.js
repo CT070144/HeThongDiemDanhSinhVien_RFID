@@ -17,7 +17,9 @@ const AttendanceHistory = () => {
     absent: 0,
     late: 0,
     dangHoc: 0,
-    daRaVe: 0
+    daRaVe: 0,
+    raVeSom: 0,
+    khongDiemDanhRa: 0
   });
   const [page, setPage] = useState(1);
   const [pageSize] = useState(10);
@@ -64,7 +66,7 @@ const AttendanceHistory = () => {
     if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
       // Không filter gì cả nếu thiếu ngày hoặc ca
       setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0 });
+      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
       setAllFilteredAttendance([]);
       setFilteredAttendance([]);
       return;
@@ -104,27 +106,46 @@ const AttendanceHistory = () => {
       }
     } else {
       setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0 });
+      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
     }
 
+    // Đảm bảo dữ liệu đã lọc cũng được sắp xếp theo thời gian tạo mới nhất
+    const sortedFiltered = filtered.sort((a, b) => 
+      new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
-    setAllFilteredAttendance(filtered);
-    setFilteredAttendance(filtered.slice(start, end));
+    setAllFilteredAttendance(sortedFiltered);
+    setFilteredAttendance(sortedFiltered.slice(start, end));
   }, [attendance, filters, page, pageSize]);
 
   const calculateAttendanceStats = (studentsInLop, attendanceRecords) => {
     const totalStudents = studentsInLop.length;
     const attendedStudents = new Set(attendanceRecords.map(r => r.maSinhVien));
-    const lateStudents = new Set(attendanceRecords.filter(r => r.tinhTrangDiemDanh === 'muon').map(r => r.maSinhVien));
-    const dangHocStudents = new Set(attendanceRecords.filter(r => r.trangThai === 'DANG_HOC').map(r => r.maSinhVien));
-    const daRaVeStudents = new Set(attendanceRecords.filter(r => r.trangThai === 'DA_RA_VE').map(r => r.maSinhVien));
+    const lateStudents = new Set(attendanceRecords.filter(r => 
+      r.tinhTrangDiemDanh === 'muon' || r.tinhTrangDiemDanh === 'MUON'
+    ).map(r => r.maSinhVien));
+    const dangHocStudents = new Set(attendanceRecords.filter(r => 
+      r.trangThai === 'DANG_HOC' || r.trangThai === 'dang_hoc'
+    ).map(r => r.maSinhVien));
+    const daRaVeStudents = new Set(attendanceRecords.filter(r => 
+      r.trangThai === 'DA_RA_VE' || r.trangThai === 'da_ra_ve'
+    ).map(r => r.maSinhVien));
+    const raVeSomStudents = new Set(attendanceRecords.filter(r => 
+      r.trangThai === 'RA_VE_SOM' || r.trangThai === 'ra_ve_som'
+    ).map(r => r.maSinhVien));
+    const khongDiemDanhRaStudents = new Set(attendanceRecords.filter(r => 
+      r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra'
+    ).map(r => r.maSinhVien));
     
     const attended = attendedStudents.size;
     const late = lateStudents.size;
     const absent = totalStudents - attended;
     const dangHoc = dangHocStudents.size;
     const daRaVe = daRaVeStudents.size;
+    const raVeSom = raVeSomStudents.size;
+    const khongDiemDanhRa = khongDiemDanhRaStudents.size;
 
     setAttendanceStats({
       totalStudents,
@@ -132,7 +153,9 @@ const AttendanceHistory = () => {
       absent,
       late,
       dangHoc,
-      daRaVe
+      daRaVe,
+      raVeSom,
+      khongDiemDanhRa
     });
   };
 
@@ -143,7 +166,11 @@ const AttendanceHistory = () => {
   const loadAttendance = async () => {
     try {
       const response = await attendanceAPI.getAll();
-      setAttendance(response.data);
+      // Sắp xếp theo thời gian tạo mới nhất lên đầu
+      const sortedData = response.data.sort((a, b) => 
+        new Date(b.createdAt) - new Date(a.createdAt)
+      );
+      setAttendance(sortedData);
     } catch (error) {
       // tránh spam toast do polling liên tục
       // toast.error('Lỗi khi tải lịch sử điểm danh');
@@ -179,6 +206,17 @@ const AttendanceHistory = () => {
     return <Badge bg={status.variant}>{status.text}</Badge>;
   };
 
+  const getAttendanceStatusBadge = (trangThai) => {
+    const statusMap = {
+      'DANG_HOC': { variant: 'primary', text: 'Đang học' },
+      'DA_RA_VE': { variant: 'success', text: 'Đã ra về' },
+      'RA_VE_SOM': { variant: 'warning', text: 'Ra về sớm' },
+      'KHONG_DIEM_DANH_RA': { variant: 'danger', text: 'Không điểm danh ra' }
+    };
+    const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
+    return <Badge bg={status.variant}>{status.text}</Badge>;
+  };
+
   const exportExcel = () => {
     // Kiểm tra điều kiện export khi lọc theo lớp học phần
     if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
@@ -204,7 +242,7 @@ const AttendanceHistory = () => {
       headerInfo.push(['', '', `Ngày: ${new Date(filters.ngay).toLocaleDateString('vi-VN')} - ${caName}`, '', '', '', '', '']);
       headerInfo.push(['', '', `Học kỳ 1 - Năm học 2025 - 2026`, '', '', '', '', '']);
       headerInfo.push([]);
-      headerInfo.push(['STT', 'Mã sinh viên', 'Họ và tên', 'Điểm danh', '', '', '']);
+      headerInfo.push(['STT', 'Mã sinh viên', 'Họ và tên', 'Điểm danh', 'Ghi chú', '', '', '']);
     } else {
       // Header for general attendance export
       headerInfo.push(['BAN CƠ YẾU CHÍNH PHỦ', '', '', '', '', '', '', '', '', '', 'CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM']);
@@ -214,7 +252,7 @@ const AttendanceHistory = () => {
       headerInfo.push(['', '', '', '', 'LỊCH SỬ ĐIỂM DANH SINH VIÊN', '', '', '', '', '', '']);
       headerInfo.push(['', '', '', '', `Xuất ngày: ${new Date().toLocaleDateString('vi-VN')}`, '', '', '', '', '', '']);
       headerInfo.push([]);
-      headerInfo.push(['RFID', 'Mã sinh viên', 'Tên sinh viên', 'Phòng học', 'Ngày', 'Ca', 'Giờ vào', 'Giờ ra', 'Tình trạng điểm danh', 'Thời gian tạo']);
+      headerInfo.push(['RFID', 'Mã sinh viên', 'Tên sinh viên', 'Phòng học', 'Ngày', 'Ca', 'Giờ vào', 'Giờ ra', 'Tình trạng điểm danh', 'Ghi chú', 'Thời gian tạo']);
     }
     
     // Create attendance data
@@ -225,6 +263,7 @@ const AttendanceHistory = () => {
       data = studentsInLop.map((student, index) => {
         const attendanceRecord = allFilteredAttendance.find(r => r.maSinhVien === student.maSinhVien);
         let diemDanh = 'v'; // vắng mặc định
+        let ghiChu = ''; // ghi chú mặc định
         let rowStyle = null; // Không có màu nền mặc định
         
         if (attendanceRecord) {
@@ -233,6 +272,13 @@ const AttendanceHistory = () => {
             rowStyle = { fill: { fgColor: { rgb: 'FFFFE0' } } }; // Vàng nhạt
           } else {
             diemDanh = 'x'; // có mặt
+          }
+          
+          // Thêm ghi chú dựa trên trạng thái
+          if (attendanceRecord.trangThai === 'RA_VE_SOM' || attendanceRecord.trangThai === 'ra_ve_som') {
+            ghiChu = 'Ra về sớm';
+          } else if (attendanceRecord.trangThai === 'KHONG_DIEM_DANH_RA' || attendanceRecord.trangThai === 'khong_diem_danh_ra') {
+            ghiChu = 'Không điểm danh ra';
           }
         } else {
           // Vắng mặt - tô màu đỏ nhạt
@@ -245,25 +291,38 @@ const AttendanceHistory = () => {
             index + 1,
             student.maSinhVien,
             student.tenSinhVien,
-            diemDanh
+            diemDanh,
+            ghiChu
           ],
           style: rowStyle
         };
       });
     } else {
-      // Export all attendance records (không xuất cột trạng thái đang học/đã ra về)
-      data = (allFilteredAttendance.length ? allFilteredAttendance : attendance).map(r => [
-        r.rfid,
-        r.maSinhVien,
-        r.tenSinhVien,
-        r.phongHoc || '',
-        r.ngay,
-        r.ca,
-        r.gioVao || '',
-        r.gioRa || '',
-        r.tinhTrangDiemDanh === 'dung_gio' ? 'Đúng giờ' : r.tinhTrangDiemDanh === 'muon' ? 'Muộn' : r.tinhTrangDiemDanh,
-        new Date(r.createdAt).toLocaleString('vi-VN')
-      ]);
+      // Export all attendance records với ghi chú trạng thái
+      data = (allFilteredAttendance.length ? allFilteredAttendance : attendance).map(r => {
+        let ghiChu = '';
+        
+        // Thêm ghi chú dựa trên trạng thái
+        if (r.trangThai === 'RA_VE_SOM' || r.trangThai === 'ra_ve_som') {
+          ghiChu = 'Ra về sớm';
+        } else if (r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra') {
+          ghiChu = 'Không điểm danh ra';
+        }
+        
+        return [
+          r.rfid,
+          r.maSinhVien,
+          r.tenSinhVien,
+          r.phongHoc || '',
+          r.ngay,
+          r.ca,
+          r.gioVao || '',
+          r.gioRa || '',
+          r.tinhTrangDiemDanh === 'dung_gio' ? 'Đúng giờ' : r.tinhTrangDiemDanh === 'muon' ? 'Muộn' : r.tinhTrangDiemDanh,
+          ghiChu,
+          new Date(r.createdAt).toLocaleString('vi-VN')
+        ];
+      });
     }
     
     // Combine header and data
@@ -290,6 +349,8 @@ const AttendanceHistory = () => {
       allData.push([`Số sinh viên muộn: ${attendanceStats.late}`, '', '', '', '']);
       allData.push([`Số sinh viên đang học: ${attendanceStats.dangHoc}`, '', '', '', '']);
       allData.push([`Số sinh viên đã ra về: ${attendanceStats.daRaVe}`, '', '', '', '']);
+      allData.push([`Số sinh viên ra về sớm: ${attendanceStats.raVeSom}`, '', '', '', '']);
+      allData.push([`Số sinh viên không điểm danh ra: ${attendanceStats.khongDiemDanhRa}`, '', '', '', '']);
     }
     
     let ws;
@@ -323,14 +384,16 @@ const AttendanceHistory = () => {
       
       // Add statistics rows
       if (attendanceStats.totalStudents > 0) {
-        htmlTable += '<tr><td colspan="4"></td></tr>';
-        htmlTable += '<tr><td style="font-weight: bold;" colspan="4">THỐNG KÊ:</td></tr>';
-        htmlTable += `<tr><td colspan="4">Tổng số sinh viên: ${attendanceStats.totalStudents}</td></tr>`;
-        htmlTable += `<tr><td colspan="4">Số sinh viên tham gia: ${attendanceStats.attended}</td></tr>`;
-        htmlTable += `<tr><td colspan="4">Số sinh viên vắng: ${attendanceStats.absent}</td></tr>`;
-        htmlTable += `<tr><td colspan="4">Số sinh viên muộn: ${attendanceStats.late}</td></tr>`;
-        htmlTable += `<tr><td colspan="4">Số sinh viên đang học: ${attendanceStats.dangHoc}</td></tr>`;
-        htmlTable += `<tr><td colspan="4">Số sinh viên đã ra về: ${attendanceStats.daRaVe}</td></tr>`;
+        htmlTable += '<tr><td colspan="5"></td></tr>';
+        htmlTable += '<tr><td style="font-weight: bold;" colspan="5">THỐNG KÊ:</td></tr>';
+        htmlTable += `<tr><td colspan="5">Tổng số sinh viên: ${attendanceStats.totalStudents}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên tham gia: ${attendanceStats.attended}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên vắng: ${attendanceStats.absent}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên muộn: ${attendanceStats.late}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên đang học: ${attendanceStats.dangHoc}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên đã ra về: ${attendanceStats.daRaVe}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên ra về sớm: ${attendanceStats.raVeSom}</td></tr>`;
+        htmlTable += `<tr><td colspan="5">Số sinh viên không điểm danh ra: ${attendanceStats.khongDiemDanhRa}</td></tr>`;
       }
       
       htmlTable += '</table>';
@@ -365,6 +428,7 @@ const AttendanceHistory = () => {
         { width: 12 },  // Giờ vào
         { width: 12 },  // Giờ ra
         { width: 20 },  // Tình trạng điểm danh
+        { width: 20 },  // Ghi chú
         { width: 20 }   // Thời gian tạo
       ];
     }
@@ -397,23 +461,6 @@ const AttendanceHistory = () => {
     return caMap[ca] || `Ca ${ca}`;
   };
 
-  const getAttendanceStatusBadge = (tinhTrangDiemDanh) => {
-    const statusMap = {
-      'DUNG_GIO': { variant: 'success', text: 'Đúng giờ' },
-      'MUON': { variant: 'warning', text: 'Muộn' }
-    };
-    const status = statusMap[tinhTrangDiemDanh] || { variant: 'light', text: tinhTrangDiemDanh };
-    return <Badge bg={status.variant}>{status.text}</Badge>;
-  };
-
-  const getStudyStatusBadge = (trangThai) => {
-    const statusMap = {
-      'DANG_HOC': { variant: 'primary', text: 'Đang học' },
-      'DA_RA_VE': { variant: 'secondary', text: 'Đã ra về' }
-    };
-    const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
-    return <Badge bg={status.variant}>{status.text}</Badge>;
-  };
 
   return (
     <Container>
@@ -533,12 +580,7 @@ const AttendanceHistory = () => {
                         <Badge bg="warning" className="me-2">
                           Muộn: {attendanceStats.late}
                         </Badge>
-                        <Badge bg="info" className="me-2">
-                          Đang học: {attendanceStats.dangHoc}
-                        </Badge>
-                        <Badge bg="secondary" className="me-2">
-                          Đã ra về: {attendanceStats.daRaVe}
-                        </Badge>
+                       
                       </div>
                     </Alert>
                   </Col>
@@ -573,8 +615,8 @@ const AttendanceHistory = () => {
                       <td>{getCaName(record.ca)}</td>
                       <td>{record.gioVao || '-'}</td>
                       <td>{record.gioRa || '-'}</td>
-                      <td>{getAttendanceStatusBadge(record.tinhTrangDiemDanh)}</td>
-                      <td>{getStudyStatusBadge(record.trangThai)}</td>
+                      <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
+                      <td>{getAttendanceStatusBadge(record.trangThai)}</td>
                       <td>{new Date(record.createdAt).toLocaleString('vi-VN')}</td>
                     </tr>
                   ))}
@@ -611,15 +653,15 @@ const AttendanceHistory = () => {
                         <Col md={4}>
                           <div className="text-center">
                             <h4 className="text-primary">
-                              {filteredAttendance.length}
+                              {allFilteredAttendance.length > 0 ? allFilteredAttendance.length : attendance.length}
                             </h4>
-                            <p>Tổng số bản ghi</p>
+                            <p>Tổng bản ghi</p>
                           </div>
                         </Col>
                         <Col md={4}>
                           <div className="text-center">
                             <h4 className="text-success">
-                              {filteredAttendance.filter(r => r.tinhTrangDiemDanh === 'DUNG_GIO' || r.tinhTrangDiemDanh === 'dung_gio').length}
+                              {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.tinhTrangDiemDanh === 'DUNG_GIO' || r.tinhTrangDiemDanh === 'dung_gio').length}
                             </h4>
                             <p>Đúng giờ</p>
                           </div>
@@ -627,12 +669,41 @@ const AttendanceHistory = () => {
                         <Col md={4}>
                           <div className="text-center">
                             <h4 className="text-warning">
-                              {filteredAttendance.filter(r => r.tinhTrangDiemDanh === 'MUON' || r.tinhTrangDiemDanh === 'muon').length}
+                              {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.tinhTrangDiemDanh === 'MUON' || r.tinhTrangDiemDanh === 'muon').length}
                             </h4>
                             <p>Điểm danh muộn</p>
                           </div>
                         </Col>
+                        <Col md={4}>
+                          <div className="text-center">
+                            <h4 className="text-info">
+                              {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'DANG_HOC' || r.trangThai === 'dang_hoc').length}
+                            </h4>
+                            <p>Đang học</p>
+                          </div>
+                        </Col>
+                      <Col md={4}>
+                          <div className="text-center">
+                            <h4 className="text-success">
+                              {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'DA_RA_VE' || r.trangThai === 'da_ra_ve').length}
+                            </h4>
+                            <p>Đã ra về</p>
+                          </div>
+                        </Col>
+                        <Col md={4}>
+                          <div className="text-center">
+                            <h4 className="text-danger">
+                              {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra').length}
+                            </h4>
+                            <p>Không điểm danh ra</p>
+                          </div>
+                        </Col>
+             
                       </Row>
+
+                       
+                        
+             
                     </Card.Body>
                   </Card>
                 </Col>

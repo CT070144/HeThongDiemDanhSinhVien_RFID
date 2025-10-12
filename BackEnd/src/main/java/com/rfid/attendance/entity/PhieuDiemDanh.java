@@ -82,7 +82,9 @@ public class PhieuDiemDanh {
     
     public enum TrangThaiHoc {
         DANG_HOC("Đang học"),
-        DA_RA_VE("Đã ra về");
+        DA_RA_VE("Đã ra về"),
+        RA_VE_SOM("Ra về sớm"),
+        KHONG_DIEM_DANH_RA("Không điểm danh ra");
         
         private final String description;
         

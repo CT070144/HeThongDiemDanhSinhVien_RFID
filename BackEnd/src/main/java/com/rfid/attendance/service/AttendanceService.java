@@ -106,8 +106,14 @@ public class AttendanceService {
             // Đã có bản ghi, cập nhật giờ ra
             PhieuDiemDanh record = existingRecord.get();
             if (record.getGioRa() == null) {
-                record.setGioRa(LocalTime.now());
-                record.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DA_RA_VE); // Cập nhật trạng thái đã ra về
+                LocalTime currentTime = LocalTime.now();
+                record.setGioRa(currentTime);
+                
+                // Xác định trạng thái dựa trên thời gian ra
+                PhieuDiemDanh.TrangThaiHoc trangThai = determineCheckoutStatus(currentTime, currentCa);
+                record.setTrangThai(trangThai);
+                
+                System.out.println("Sinh viên điểm danh ra lúc: " + currentTime + ", Trạng thái: " + trangThai.getDescription());
                 return phieuDiemDanhRepository.save(record);
             } else {
                 throw new RuntimeException("Sinh viên đã điểm danh ra trong ca này");
@@ -213,6 +219,48 @@ public class AttendanceService {
                 }
             default:
                 return PhieuDiemDanh.TrangThai.DUNG_GIO;
+        }
+    }
+    
+    private PhieuDiemDanh.TrangThaiHoc determineCheckoutStatus(LocalTime checkoutTime, Integer ca) {
+        switch (ca) {
+            case 1:
+                // Ca 1: 7h - 9h25, ra về sớm nếu trước 9h05 (20 phút trước khi kết thúc)
+                if (checkoutTime.isBefore(LocalTime.of(9, 5))) {
+                    return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
+                } else {
+                    return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
+                }
+            case 2:
+                // Ca 2: 9h35 - 12h, ra về sớm nếu trước 11h40 (20 phút trước khi kết thúc)
+                if (checkoutTime.isBefore(LocalTime.of(11, 40))) {
+                    return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
+                } else {
+                    return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
+                }
+            case 3:
+                // Ca 3: 12h30 - 14h55, ra về sớm nếu trước 14h35 (20 phút trước khi kết thúc)
+                if (checkoutTime.isBefore(LocalTime.of(14, 35))) {
+                    return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
+                } else {
+                    return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
+                }
+            case 4:
+                // Ca 4: 15h05 - 17h30, ra về sớm nếu trước 17h10 (20 phút trước khi kết thúc)
+                if (checkoutTime.isBefore(LocalTime.of(17, 10))) {
+                    return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
+                } else {
+                    return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
+                }
+            case 5:
+                // Ca 5: 18h - 20h30, ra về sớm nếu trước 20h10 (20 phút trước khi kết thúc)
+                if (checkoutTime.isBefore(LocalTime.of(20, 10))) {
+                    return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
+                } else {
+                    return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
+                }
+            default:
+                return PhieuDiemDanh.TrangThaiHoc.DA_RA_VE;
         }
     }
     

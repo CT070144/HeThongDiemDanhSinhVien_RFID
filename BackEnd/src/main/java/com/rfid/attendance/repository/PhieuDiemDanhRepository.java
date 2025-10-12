@@ -59,4 +59,13 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
 
     @org.springframework.transaction.annotation.Transactional
     void deleteByRfid(String rfid);
+    
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay AND p.trangThai = :trangThai AND p.gioRa IS NULL")
+    List<PhieuDiemDanh> findByNgayAndTrangThaiAndGioRaIsNull(@Param("ngay") LocalDate ngay, 
+                                                             @Param("trangThai") PhieuDiemDanh.TrangThaiHoc trangThai);
+    
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay AND p.ca = :ca AND p.trangThai = :trangThai AND p.gioRa IS NULL")
+    List<PhieuDiemDanh> findByNgayAndCaAndTrangThaiAndGioRaIsNull(@Param("ngay") LocalDate ngay, 
+                                                                  @Param("ca") Integer ca, 
+                                                                  @Param("trangThai") PhieuDiemDanh.TrangThaiHoc trangThai);
 }

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { studentAPI } from '../services/api';
 import api from '../services/api';
+import * as XLSX from 'xlsx';
 
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
@@ -20,6 +21,10 @@ const StudentManagement = () => {
     tenSinhVien: ''
   });
   const [loading, setLoading] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   useEffect(() => {
     loadStudents();
@@ -137,6 +142,176 @@ const StudentManagement = () => {
     setShowModal(true);
   };
 
+  const handleFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const allowedTypes = [
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      ];
+      
+      if (!allowedTypes.includes(file.type)) {
+        toast.error('Dữ liệu trong file không đúng định dạng');
+        return;
+      }
+      
+      setImportFile(file);
+    }
+  };
+
+  const parseExcelFile = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          console.log(jsonData);
+          if (jsonData.length < 2) {
+            reject(new Error('Dữ liệu trong file không đúng định dạng'));
+            return;
+          }
+          
+          // Lấy header
+          const headers = jsonData[0];
+          console.log('Headers found:', headers);
+          
+          // Tìm vị trí các cột với nhiều tùy chọn tên cột
+          const maSinhVienIndex = headers.findIndex(h => {
+            if (!h) return false;
+            const header = h.toString().toLowerCase().trim();
+            return header.includes('mã sinh viên') || 
+                   header.includes('masinhvien') || 
+                   header.includes('student id') ||
+                   header.includes('ma_sinh_vien');
+          });
+          
+          const tenSinhVienIndex = headers.findIndex(h => {
+            if (!h) return false;
+            const header = h.toString().toLowerCase().trim();
+            return header.includes('họ và tên') || 
+                   header.includes('hovaten') || 
+                   header.includes('tên sinh viên') ||
+                   header.includes('tensinhvien') ||
+                   header.includes('full name') ||
+                   header.includes('ho va ten') ||
+                   header.includes('ten_sinh_vien');
+          });
+          
+          const rfidIndex = headers.findIndex(h => {
+            if (!h) return false;
+            const header = h.toString().toLowerCase().trim();
+            return header.includes('rfid');
+          });
+          
+          console.log('Column indices:', { maSinhVienIndex, tenSinhVienIndex, rfidIndex });
+          
+          if (maSinhVienIndex === -1 || tenSinhVienIndex === -1 || rfidIndex === -1) {
+            const missingColumns = [];
+            if (maSinhVienIndex === -1) missingColumns.push('Mã sinh viên');
+            if (tenSinhVienIndex === -1) missingColumns.push('Họ và tên');
+            if (rfidIndex === -1) missingColumns.push('RFID');
+            
+            reject(new Error('Dữ liệu trong file không đúng định dạng'));
+            return;
+          }
+          
+          // Parse dữ liệu
+          const students = [];
+          for (let i = 1; i < jsonData.length; i++) {
+            const row = jsonData[i];
+            console.log(`Row ${i}:`, row);
+            
+            if (row && row[maSinhVienIndex] && row[tenSinhVienIndex] && row[rfidIndex]) {
+              const student = {
+                maSinhVien: row[maSinhVienIndex].toString().trim(),
+                tenSinhVien: row[tenSinhVienIndex].toString().trim(),
+                rfid: row[rfidIndex].toString().trim()
+              };
+              console.log(`Parsed student ${i}:`, student);
+              students.push(student);
+            } else {
+              console.log(`Row ${i} skipped - missing data:`, {
+                maSinhVien: row?.[maSinhVienIndex],
+                tenSinhVien: row?.[tenSinhVienIndex],
+                rfid: row?.[rfidIndex]
+              });
+            }
+          }
+          
+          if (students.length === 0) {
+            reject(new Error('Dữ liệu trong file không đúng định dạng'));
+            return;
+          }
+          
+          resolve(students);
+        } catch (error) {
+          reject(new Error('Dữ liệu trong file không đúng định dạng'));
+        }
+      };
+      
+      reader.onerror = () => {
+        reject(new Error('Dữ liệu trong file không đúng định dạng'));
+      };
+      
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  const handleImport = async () => {
+    if (!importFile) {
+      toast.error('Dữ liệu trong file không đúng định dạng');
+      return;
+    }
+    
+    setImporting(true);
+    setImportResult(null);
+    
+    try {
+      const students = await parseExcelFile(importFile);
+      
+      if (students.length === 0) {
+        toast.error('Dữ liệu trong file không đúng định dạng');
+        setImporting(false);
+        return;
+      }
+      
+      // Gửi dữ liệu lên server
+      const response = await studentAPI.bulkUpdateRfid(students);
+      const result = response.data;
+      
+      setImportResult(result);
+      
+      // Hiển thị kết quả
+      if (result.successCount > 0) {
+        toast.success(`Cập nhật thành công ${result.successCount} sinh viên`);
+      }
+      
+      if (result.failureCount > 0) {
+        toast.error(`${result.failureCount} sinh viên cập nhật thất bại`);
+      }
+      
+      // Reload danh sách sinh viên
+      loadStudents();
+      
+    } catch (error) {
+      toast.error(error.response?.data || error.message || 'Dữ liệu trong file không đúng định dạng');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+    setImportFile(null);
+    setImportResult(null);
+    setImporting(false);
+  };
+
   return (
     <Container>
       <Row>
@@ -170,6 +345,13 @@ const StudentManagement = () => {
                   </Form.Select>
                 </Col>
                 <Col md={4} className="text-end">
+                  <Button 
+                    variant="success" 
+                    onClick={() => setShowImportModal(true)}
+                    className="me-2"
+                  >
+                   Cập nhật RFID
+                  </Button>
                   <Button variant="primary" onClick={handleAddNew}>
                     Thêm sinh viên mới
                   </Button>
@@ -180,7 +362,7 @@ const StudentManagement = () => {
                 <Row className="mb-3">
                   <Col>
                     <Alert variant="info">
-                      Đang hiển thị sinh viên của lớp học phần: <Badge bg="primary">
+                   <Badge bg="primary">
                         {lopHocPhans.find(l => l.maLopHocPhan === selectedLopHocPhan)?.tenLopHocPhan}
                       </Badge>
                     </Alert>
@@ -326,6 +508,78 @@ const StudentManagement = () => {
             </Button>
           </Modal.Footer>
         </Form>
+      </Modal>
+
+      {/* Modal import Excel */}
+      <Modal show={showImportModal} onHide={handleCloseImportModal} size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Import cập nhật RFID từ Excel</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="info">
+            <strong>Vui lòng chọn file muốn cập nhật RFID (Hỗ trợ định dạng .xls và .xlsx)</strong>
+            
+          </Alert>
+          
+          <Form.Group className="mb-3">
+            <Form.Label>Chọn file Excel</Form.Label>
+            <Form.Control
+              type="file"
+              accept=".xls,.xlsx"
+              onChange={handleFileChange}
+              disabled={importing}
+            />
+            {importFile && (
+              <Form.Text className="text-muted">
+                Đã chọn: {importFile.name}
+              </Form.Text>
+            )}
+          </Form.Group>
+
+          {importing && (
+            <div className="mb-3">
+              <ProgressBar animated now={100} />
+              <small className="text-muted">Đang xử lý file Excel...</small>
+            </div>
+          )}
+
+          {importResult && (
+            <Alert variant={importResult.failureCount === 0 ? "success" : "warning"}>
+              <h6>Kết quả import:</h6>
+              <ul className="mb-2">
+                <li><strong>Tổng số:</strong> {importResult.totalProcessed}</li>
+                <li><strong>Thành công:</strong> {importResult.successCount}</li>
+                <li><strong>Thất bại:</strong> {importResult.failureCount}</li>
+              </ul>
+              
+              {importResult.errors && importResult.errors.length > 0 && (
+                <div>
+                  <strong>Chi tiết lỗi:</strong>
+                  <ul className="mb-0 mt-1">
+                    {importResult.errors.slice(0, 5).map((error, index) => (
+                      <li key={index}><small>{error}</small></li>
+                    ))}
+                    {importResult.errors.length > 5 && (
+                      <li><small>... và {importResult.errors.length - 5} lỗi khác</small></li>
+                    )}
+                  </ul>
+                </div>
+              )}
+            </Alert>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleCloseImportModal} disabled={importing}>
+            Đóng
+          </Button>
+          <Button 
+            variant="primary" 
+            onClick={handleImport} 
+            disabled={!importFile || importing}
+          >
+            {importing ? 'Đang xử lý...' : 'Import'}
+          </Button>
+        </Modal.Footer>
       </Modal>
     </Container>
   );

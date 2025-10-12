@@ -89,10 +89,11 @@ public class SinhVienController {
     @PutMapping("/{maSinhVien}")
     public ResponseEntity<?> updateSinhVien(@PathVariable String maSinhVien, @Valid @RequestBody SinhVien sinhVienDetails) {
         try {
+
             // Lấy thông tin sinh viên cũ trước khi cập nhật
             Optional<SinhVien> oldSinhVienOpt = sinhVienService.getSinhVienByMaSinhVien(maSinhVien);
             String oldRfid = oldSinhVienOpt.map(SinhVien::getRfid).orElse(null);
-            
+
             SinhVien updatedSinhVien = sinhVienService.updateSinhVien(maSinhVien, sinhVienDetails);
             docRfidRepository.findByRfid(sinhVienDetails.getRfid()).ifPresent(
                     docRfid1 -> {
@@ -163,6 +164,31 @@ public class SinhVienController {
             return ResponseEntity.ok(exists);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+    
+    @PostMapping("/bulk-update-rfid")
+    public ResponseEntity<?> bulkUpdateRfid(@RequestBody List<SinhVien> sinhVienList) {
+        try {
+            System.out.println("=== BULK UPDATE RFID ===");
+            System.out.println("Số lượng sinh viên cần xử lý: " + sinhVienList.size());
+            
+            var result = sinhVienService.bulkUpdateRfid(sinhVienList);
+            
+            System.out.println("Kết quả xử lý:");
+            System.out.println("- Tổng số: " + result.get("totalProcessed"));
+            System.out.println("- Thành công: " + result.get("successCount"));
+            System.out.println("- Thất bại: " + result.get("failureCount"));
+            
+            if ((Integer) result.get("failureCount") > 0) {
+                System.out.println("Chi tiết lỗi: " + result.get("errors"));
+            }
+            
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.out.println("Lỗi khi cập nhật hàng loạt: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Lỗi khi cập nhật hàng loạt: " + e.getMessage());
         }
     }
 }
