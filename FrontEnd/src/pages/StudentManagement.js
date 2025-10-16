@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar, Spinner } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-import { studentAPI } from '../services/api';
+import { studentAPI, attendanceAPI } from '../services/api';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
 
@@ -25,11 +25,79 @@ const StudentManagement = () => {
   const [importFile, setImportFile] = useState(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [latestRfid, setLatestRfid] = useState(null);
+  const [rfidStatus, setRfidStatus] = useState(null); // 'new', 'exists', 'current'
 
   useEffect(() => {
     loadStudents();
     loadLopHocPhans();
   }, []);
+
+  // Effect để quét RFID khi modal mở
+  useEffect(() => {
+    if (!showModal || !scanning) return;
+    
+    let isFetching = false;
+    const intervalId = setInterval(async () => {
+      if (isFetching) return;
+      isFetching = true;
+      try {
+        const response = await attendanceAPI.getUnprocessedRfids();
+        const unprocessedRfids = response.data || [];
+        
+        // Tìm RFID mới nhất chưa được xử lý
+        const latestUnprocessed = unprocessedRfids
+          .filter(rfid => !rfid.processed)
+          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
+        
+        if (latestUnprocessed && latestUnprocessed.rfid !== latestRfid) {
+          setLatestRfid(latestUnprocessed.rfid);
+          
+          // Kiểm tra xem RFID đã được đăng ký chưa
+          try {
+            const existingStudent = await studentAPI.getByRfid(latestUnprocessed.rfid);
+            if (existingStudent && existingStudent.data) {
+              // RFID đã được đăng ký
+              setRfidStatus('exists');
+              setFormData(prev => ({
+                ...prev,
+                rfid: latestUnprocessed.rfid
+              }));
+              toast.warning(`RFID ${latestUnprocessed.rfid} đã được đăng ký cho sinh viên: ${existingStudent.data.tenSinhVien} (${existingStudent.data.maSinhVien}). Hãy thử thẻ khác.`);
+              // Không dừng quét khi RFID đã đăng ký, để người dùng có thể thử thẻ khác
+            } else {
+              // RFID chưa được đăng ký
+              setRfidStatus('new');
+              setFormData(prev => ({
+                ...prev,
+                rfid: latestUnprocessed.rfid
+              }));
+              toast.success(`Quét thấy RFID mới: ${latestUnprocessed.rfid}`);
+              // Dừng quét khi tìm thấy RFID hợp lệ
+              setScanning(false);
+            }
+          } catch (error) {
+            // RFID chưa được đăng ký (lỗi 404)
+            setRfidStatus('new');
+            setFormData(prev => ({
+              ...prev,
+              rfid: latestUnprocessed.rfid
+            }));
+            toast.success(`Quét thấy RFID mới: ${latestUnprocessed.rfid}`);
+            // Dừng quét khi tìm thấy RFID hợp lệ
+            setScanning(false);
+          }
+        }
+      } catch (error) {
+        // Silent error handling
+      } finally {
+        isFetching = false;
+      }
+    }, 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [showModal, scanning, latestRfid]);
 
   const loadLopHocPhans = async () => {
     try {
@@ -87,6 +155,12 @@ const StudentManagement = () => {
       ...prev,
       [name]: value
     }));
+    
+    // Reset RFID status khi người dùng nhập thủ công
+    if (name === 'rfid') {
+      setRfidStatus(null);
+      setLatestRfid(null);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -94,6 +168,13 @@ const StudentManagement = () => {
     setLoading(true);
 
     try {
+      // Kiểm tra RFID đã được đăng ký chưa (chỉ khi thêm mới hoặc thay đổi RFID)
+      if (rfidStatus === 'exists' && (!editingStudent || formData.rfid !== editingStudent.rfid)) {
+        toast.error('RFID này đã được đăng ký cho sinh viên khác. Vui lòng chọn RFID khác.');
+        setLoading(false);
+        return;
+      }
+
       if (editingStudent) {
         // Sử dụng mã sinh viên làm khóa chính cho update
         await studentAPI.update(editingStudent.maSinhVien, formData);
@@ -103,7 +184,7 @@ const StudentManagement = () => {
         toast.success('Thêm sinh viên thành công');
       }
       
-      setShowModal(false);
+      handleCloseModal();
       setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '' });
       setEditingStudent(null);
       loadStudents();
@@ -121,6 +202,9 @@ const StudentManagement = () => {
       rfid: student.rfid,
       tenSinhVien: student.tenSinhVien
     });
+    setLatestRfid(null);
+    setRfidStatus('current'); // RFID hiện tại của sinh viên đang sửa
+    setScanning(false);
     setShowModal(true);
   };
 
@@ -139,6 +223,9 @@ const StudentManagement = () => {
   const handleAddNew = () => {
     setEditingStudent(null);
     setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '' });
+    setLatestRfid(null);
+    setRfidStatus(null);
+    setScanning(false);
     setShowModal(true);
   };
 
@@ -312,8 +399,36 @@ const StudentManagement = () => {
     setImporting(false);
   };
 
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setScanning(false);
+    setLatestRfid(null);
+    setRfidStatus(null);
+  };
+
   return (
     <Container>
+      <style>{`
+        @keyframes sweep {
+          0% { left: -40%; }
+          100% { left: 100%; }
+        }
+        @keyframes pulse {
+          0% { transform: scale(1); opacity: 0.9; }
+          70% { transform: scale(1.35); opacity: 0.2; }
+          100% { transform: scale(1); opacity: 0.9; }
+        }
+        .scan-dot { 
+          width: 8px; 
+          height: 8px; 
+          border-radius: 50%; 
+          background: #0d6efd; 
+          display: inline-block; 
+          animation: pulse 1.2s infinite ease-in-out; 
+        }
+        .scan-dot.d2 { animation-delay: .2s; }
+        .scan-dot.d3 { animation-delay: .4s; }
+      `}</style>
       <Row>
         <Col>
           <Card>
@@ -448,7 +563,7 @@ const StudentManagement = () => {
       </Row>
 
       {/* Modal thêm/sửa sinh viên */}
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
+      <Modal show={showModal} onHide={handleCloseModal}>
         <Modal.Header closeButton>
           <Modal.Title>
             {editingStudent ? (
@@ -476,18 +591,125 @@ const StudentManagement = () => {
               
             </Form.Group>
             <Form.Group className="mb-3">
-              <Form.Label>RFID </Form.Label>
-              <Form.Control
-                type="text"
-                name="rfid"
-                value={formData.rfid}
-                onChange={handleInputChange}
-                required
-                placeholder="Nhập mã RFID (VD: RFID001)"
-              />
-          
-            </Form.Group>
-            <Form.Group className="mb-3">
+  <Form.Label>RFID</Form.Label>
+
+  {/* Gom input và nút vào cùng 1 hàng */}
+  <div className="d-flex align-items-center gap-2">
+    <Form.Control
+      type="text"
+      name="rfid"
+      value={formData.rfid}
+      onChange={handleInputChange}
+      required
+      placeholder="Nhập mã RFID hoặc quét từ thiết bị"
+      readOnly={scanning}
+      className={
+        rfidStatus === 'exists'
+          ? 'border-warning'
+          : rfidStatus === 'new'
+          ? 'border-success'
+          : rfidStatus === 'current'
+          ? 'border-info'
+          : ''
+      }
+    />
+
+    {/* Nút nằm bên phải input */}
+    <Button
+      style={{
+        width: '160px', // mở rộng nút về bên trái
+        height: '38px',
+        position: 'relative',
+        top: -5
+      }}
+      variant={scanning ? 'danger' : 'success'}
+      onClick={() => setScanning(!scanning)}
+      disabled={loading}
+    >
+      {scanning ? (
+        <>
+          <Spinner size="sm" className="me-1" />
+          Dừng quét
+        </>
+      ) : (
+        'Quét RFID'
+      )}
+    </Button>
+  </div>
+
+  {scanning && (
+    <Alert variant="info" className="mt-2">
+      <div className="d-flex align-items-center">
+        <Spinner animation="border" size="sm" className="me-2" />
+        <span className="me-3">
+          Đang quét RFID... Hãy đưa thẻ RFID vào thiết bị
+        </span>
+        <div className="d-flex gap-1">
+          <span className="scan-dot" />
+          <span className="scan-dot d2" />
+          <span className="scan-dot d3" />
+        </div>
+      </div>
+      <div
+        className="position-relative mt-2"
+        style={{ height: 4, overflow: 'hidden', borderRadius: 2 }}
+      >
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: '-40%',
+            width: '40%',
+            height: '100%',
+            background:
+              'linear-gradient(90deg, transparent, rgba(13,110,253,0.5), transparent)',
+            animation: 'sweep 1.2s linear infinite',
+          }}
+        />
+        <div
+          style={{
+            width: '100%',
+            height: '100%',
+            background:
+              'repeating-linear-gradient(90deg, #e9ecef 0, #e9ecef 10px, #f8f9fa 10px, #f8f9fa 20px)',
+          }}
+        />
+      </div>
+    </Alert>
+  )}
+  
+  {/* Hiển thị trạng thái RFID */}
+  {rfidStatus === 'exists' && (
+    <Alert variant="warning" className="mt-2">
+      <div className="d-flex align-items-center justify-content-between">
+        <div className="d-flex align-items-center">
+          <i className="fas fa-exclamation-triangle me-2"></i>
+          <span><strong>RFID đã được đăng ký!</strong> Thẻ này đã được sử dụng bởi sinh viên khác.</span>
+        </div>
+        <Button
+          variant="outline-warning"
+          size="sm"
+          onClick={() => setScanning(false)}
+        >
+          Dừng quét
+        </Button>
+      </div>
+    </Alert>
+  )}
+  
+  {rfidStatus === 'new' && (
+    <Alert variant="success" className="mt-2">
+      <div className="d-flex align-items-center">
+        <i className="fas fa-check-circle me-2"></i>
+        <span><strong>Tìm thấy RFID mới !</strong></span>
+      </div>
+    </Alert>
+  )}
+  
+ 
+</Form.Group>
+
+<Form.Group className="mb-3">
               <Form.Label>Tên sinh viên</Form.Label>
               <Form.Control
                 type="text"
@@ -500,10 +722,17 @@ const StudentManagement = () => {
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>
+            <Button variant="secondary" onClick={handleCloseModal}>
               Hủy
             </Button>
-            <Button variant="primary" type="submit" disabled={loading}>
+            <Button 
+              variant="primary" 
+              type="submit" 
+              disabled={
+                loading || 
+                (rfidStatus === 'exists' && (!editingStudent || formData.rfid !== editingStudent.rfid))
+              }
+            >
               {loading ? 'Đang xử lý...' : (editingStudent ? 'Cập nhật' : 'Thêm')}
             </Button>
           </Modal.Footer>
