@@ -70,9 +70,10 @@ public class SinhVienService {
         sinhVien.setTenSinhVien(sinhVienDetails.getTenSinhVien());
         
         SinhVien saved = sinhVienRepository.save(sinhVien);
+        if(!sinhVienDetails.getRfid().equals(oldRfid)){
         docRfidRepository.findByRfid(oldRfid).ifPresent(docRfid -> {
             docRfidRepository.delete(docRfid);
-        });
+        });}
         // Sync to docrfid (cập nhật RFID mới)
         docRfidRepository.findByRfid(sinhVienDetails.getRfid()).ifPresent(doc -> {
             System.out.println("vô đây r nèeeee");

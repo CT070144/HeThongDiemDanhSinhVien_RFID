@@ -170,6 +170,54 @@ public class LopHocPhanController {
         }
     }
     
+    @PostMapping("/add-student")
+    public ResponseEntity<Map<String, Object>> addStudentToLopHocPhan(@RequestBody Map<String, String> request) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String maLopHocPhan = request.get("maLopHocPhan");
+            String maSinhVien = request.get("maSinhVien");
+            
+            if (maLopHocPhan == null || maSinhVien == null) {
+                response.put("success", false);
+                response.put("message", "Mã lớp học phần và mã sinh viên không được để trống");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            lopHocPhanService.addStudentToLopHocPhan(maLopHocPhan, maSinhVien);
+            response.put("success", true);
+            response.put("message", "Thêm sinh viên vào lớp học phần thành công");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+    }
+    
+    @PostMapping("/remove-student")
+    public ResponseEntity<Map<String, Object>> removeStudentFromLopHocPhan(@RequestBody Map<String, String> request) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            String maLopHocPhan = request.get("maLopHocPhan");
+            String maSinhVien = request.get("maSinhVien");
+            
+            if (maLopHocPhan == null || maSinhVien == null) {
+                response.put("success", false);
+                response.put("message", "Mã lớp học phần và mã sinh viên không được để trống");
+                return ResponseEntity.badRequest().body(response);
+            }
+            
+            lopHocPhanService.removeStudentFromLopHocPhan(maLopHocPhan, maSinhVien);
+            response.put("success", true);
+            response.put("message", "Xóa sinh viên khỏi lớp học phần thành công");
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+    }
+    
     private boolean isExcelFile(MultipartFile file) {
         String fileName = file.getOriginalFilename();
         return fileName != null && (fileName.toLowerCase().endsWith(".xls") || fileName.toLowerCase().endsWith(".xlsx"));

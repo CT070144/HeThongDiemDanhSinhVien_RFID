@@ -339,4 +339,45 @@ public class LopHocPhanService {
     public long countSinhVienInLopHocPhan(String maLopHocPhan) {
         return sinhVienLopHocPhanRepository.countByMaLopHocPhan(maLopHocPhan);
     }
+    
+    public void addStudentToLopHocPhan(String maLopHocPhan, String maSinhVien) {
+        // Check if class exists
+        if (!lopHocPhanRepository.existsByMaLopHocPhan(maLopHocPhan)) {
+            throw new RuntimeException("Lớp học phần không tồn tại");
+        }
+        
+        // Check if student exists
+        if (!sinhVienRepository.existsByMaSinhVien(maSinhVien)) {
+            throw new RuntimeException("Sinh viên không tồn tại");
+        }
+        
+        // Check if relationship already exists
+        if (sinhVienLopHocPhanRepository.existsByMaSinhVienAndMaLopHocPhan(maSinhVien, maLopHocPhan)) {
+            throw new RuntimeException("Sinh viên đã có trong lớp học phần này");
+        }
+        
+        // Create new relationship
+        SinhVienLopHocPhan relationship = new SinhVienLopHocPhan(maSinhVien, maLopHocPhan);
+        sinhVienLopHocPhanRepository.save(relationship);
+    }
+    
+    public void removeStudentFromLopHocPhan(String maLopHocPhan, String maSinhVien) {
+        // Check if class exists
+        if (!lopHocPhanRepository.existsByMaLopHocPhan(maLopHocPhan)) {
+            throw new RuntimeException("Lớp học phần không tồn tại");
+        }
+        
+        // Check if student exists
+        if (!sinhVienRepository.existsByMaSinhVien(maSinhVien)) {
+            throw new RuntimeException("Sinh viên không tồn tại");
+        }
+        
+        // Check if relationship exists
+        if (!sinhVienLopHocPhanRepository.existsByMaSinhVienAndMaLopHocPhan(maSinhVien, maLopHocPhan)) {
+            throw new RuntimeException("Sinh viên không có trong lớp học phần này");
+        }
+        
+        // Remove relationship
+        sinhVienLopHocPhanRepository.deleteByMaSinhVienAndMaLopHocPhan(maSinhVien, maLopHocPhan);
+    }
 }

@@ -41,7 +41,7 @@ const CustomNavbar = () => {
               <Nav.Link>Dashboard</Nav.Link>
             </LinkContainer>
             <LinkContainer to="/students">
-              <Nav.Link>Quản lý sinh viên</Nav.Link>
+              <Nav.Link>Sinh viên</Nav.Link>
             </LinkContainer>
             <LinkContainer to="/lophocphan">
               <Nav.Link>Lớp học phần</Nav.Link>

@@ -433,7 +433,7 @@ const StudentManagement = () => {
         <Col>
           <Card>
             <Card.Header>
-              <h3>Quản lý sinh viên</h3>
+              <h3>Sinh viên</h3>
            
             </Card.Header>
             <Card.Body>
