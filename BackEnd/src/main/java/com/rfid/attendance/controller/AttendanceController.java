@@ -8,9 +8,11 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -71,11 +73,14 @@ public class AttendanceController {
     public ResponseEntity<?> processRfidAttendance(@RequestBody RfidRequest request) {
         try {
             PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(request.getRfid(), request.getMaThietBi());
-            if (attendance.getId() == null) {
+            String tensv = removeAccent(attendance.getTenSinhVien());
+            attendance.setTenSinhVien(tensv);
+            if (attendance.getRfid() == null) {
                 return ResponseEntity.ok(new RfidResponse("not_found", ""));
             }
             return ResponseEntity.ok(new RfidResponse("found", attendance.getTenSinhVien()));
         } catch (RuntimeException e) {
+            System.out.println(e.getMessage());
             return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
@@ -172,5 +177,18 @@ public class AttendanceController {
         }
         public String getStatus() { return status; }
         public String getName() { return name; }
+    }
+    public static String removeAccent(String input) {
+        // B1: Chuẩn hóa chuỗi thành dạng decomposed (chữ + dấu tách riêng)
+        String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
+
+        // B2: Loại bỏ các ký tự dấu (ký tự Unicode tổ hợp)
+        Pattern pattern = Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
+        String result = pattern.matcher(normalized).replaceAll("");
+
+        // B3: Một số ký tự đặc biệt tiếng Việt không nằm trong nhóm trên
+        result = result.replace("đ", "d").replace("Đ", "D");
+
+        return result;
     }
 }

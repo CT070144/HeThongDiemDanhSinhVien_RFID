@@ -25,6 +25,9 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ca = :ca ORDER BY p.ngay DESC, p.createdAt DESC")
     List<PhieuDiemDanh> findByCa(@Param("ca") Integer ca);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.rfid = :rfid ORDER BY p.ngay DESC, p.createdAt DESC")
+    List<PhieuDiemDanh> findByRfid(@Param("rfid") String rfid);
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien ORDER BY p.ngay DESC, p.ca ASC")
     List<PhieuDiemDanh> findByMaSinhVien(@Param("maSinhVien") String maSinhVien);

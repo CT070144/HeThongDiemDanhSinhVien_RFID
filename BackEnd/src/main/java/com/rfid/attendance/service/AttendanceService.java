@@ -82,7 +82,9 @@ public class AttendanceService {
             
             // Nếu không tồn tại, lưu vào bảng doc_rfid (transaction riêng) và trả lỗi nghiệp vụ
             saveUnregisteredRfid(trimmedRfid);
-            return new PhieuDiemDanh();
+            PhieuDiemDanh response = new PhieuDiemDanh();
+            response.setRfid(null);
+            return response;
         }
         
         SinhVien sinhVien = sinhVienOpt.get();
@@ -116,7 +118,12 @@ public class AttendanceService {
                 System.out.println("Sinh viên điểm danh ra lúc: " + currentTime + ", Trạng thái: " + trangThai.getDescription());
                 return phieuDiemDanhRepository.save(record);
             } else {
-                throw new RuntimeException("Sinh viên đã điểm danh ra trong ca này");
+                System.out.println("Sinh viên đã điểm danh ra trong ca này");
+                PhieuDiemDanh response = new PhieuDiemDanh();
+                response.setRfid(record.getRfid());
+                response.setTenSinhVien(record.getTenSinhVien());
+                response.setCa(-99);
+                return response;
             }
         } else {
             // Tạo bản ghi mới
@@ -140,14 +147,16 @@ public class AttendanceService {
 
     public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
         PhieuDiemDanh record = processRfidAttendance(rfid);
-        if (record.getId() == null) return record;
-        if (maThietBi != null && !maThietBi.isEmpty()) {
+        System.out.println(record.getRfid());
+        if (record.getRfid() == null) return record;
+        if (maThietBi != null && !maThietBi.isEmpty() && record.getCa() != -99) {
             Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
             tb.ifPresent(thietBi -> {
                 record.setPhongHoc(thietBi.getPhongHoc());
                 phieuDiemDanhRepository.save(record);
             });
         }
+        System.out.printf("lỗi đấyyy");
         return record;
     }
     
@@ -155,7 +164,7 @@ public class AttendanceService {
         LocalTime currentTime = LocalTime.now();
         
         // Ca 1: 7h - 9h25 (có thể điểm danh từ 6h50 - 9h35)
-        if (currentTime.isAfter(LocalTime.of(6, 50)) && currentTime.isBefore(LocalTime.of(9, 35))) {
+        if (currentTime.isAfter(LocalTime.of(1, 50)) && currentTime.isBefore(LocalTime.of(9, 35))) {
             return 1;
         }
         // Ca 2: 9h35 - 12h (có thể điểm danh từ 9h25 - 12h10)
