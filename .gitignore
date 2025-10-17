@@ -1,7 +1,7 @@
 # Node modules
 node_modules/
 FrontEnd/node_modules/
-
+FrontEnd/build/
 # IDE settings
 .idea/
 BackEnd/.idea/

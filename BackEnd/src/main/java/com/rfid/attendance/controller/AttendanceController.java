@@ -72,6 +72,8 @@ public class AttendanceController {
     @PostMapping("/rfid")
     public ResponseEntity<?> processRfidAttendance(@RequestBody RfidRequest request) {
         try {
+            System.out.println(request.getRfid());
+            System.out.println(request.getMaThietBi());
             PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(request.getRfid(), request.getMaThietBi());
             String tensv = removeAccent(attendance.getTenSinhVien());
             attendance.setTenSinhVien(tensv);

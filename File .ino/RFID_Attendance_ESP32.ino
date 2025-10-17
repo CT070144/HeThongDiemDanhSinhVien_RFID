@@ -1,16 +1,19 @@
 /*
- * RFID Attendance System - ESP32 Code
+ * RFID Attendance System - ESP32 Code with WiFiManager
  * 
  * Required Libraries:
  * - MFRC522 (for RFID)
  * - ArduinoJson (for JSON handling)
  * - LiquidCrystal_I2C (for LCD1602 display)
+ * - WiFiManager (for WiFi configuration)
+ * - Preferences (for storing settings in flash)
  * 
  * Hardware Requirements:
  * - ESP32 Development Board
  * - RC522 RFID Module
  * - LCD1602 I2C Display
  * - Buzzer (2 cực SFM-27)
+ * - Button (for config reset)
  * - Breadboard and jumper wires
  * 
  * Connections:
@@ -33,17 +36,28 @@
  * + (Positive) -> GPIO 15
  * - (Negative) -> GND
  * 
+ * Button          ESP32
+ * One side    ->  GPIO 0
+ * Other side  ->  GND
+ * 
  * Features:
- * - WiFi connection
+ * - WiFiManager for easy WiFi configuration via web portal
+ * - Persistent storage of WiFi credentials and device settings
  * - RFID card reading
- * - HTTP POST to Spring Boot server with device ID
+ * - HTTP POST to Spring Boot server with configurable device ID
  * - LCD1602 display for status messages
  * - Buzzer audio feedback:
  *   * Single beep when RFID is scanned
  *   * Long beep when attendance is successful
  *   * Double beep when there's an error
+ * - Button control:
+ *   * Hold button on startup: Clear saved WiFi credentials
+ *   * Hold button for 5s during operation: Reset all configuration
+ *   * Short press: Refresh display
  * - Serial monitor debugging
- * - Device identification (DEVICE_001)
+ * - Configurable device ID and server URL
+ * - Automatic reconnection to WiFi
+ * - NTP time synchronization
  */
 
  #include <WiFi.h>
@@ -53,17 +67,25 @@
  #include <ArduinoJson.h>
  #include <LiquidCrystal_I2C.h>
  #include <time.h>
+ #include <WiFiManager.h>
+ #include <Preferences.h>
  
- // WiFi credentials
- const char* ssid = "Ocngonduyenhai";
- const char* password = "camonquykhach";
+ // WiFi credentials (sẽ được lưu vào flash)
+ String ssid = "";
+ String password = "";
  
 // Server configuration
-const char* serverURL = "http://192.168.1.70:8080/api/attendance/rfid";
+String serverURL = "http://192.168.1.70:8080/api/attendance/rfid";
 // Change the IP address to your computer's IP address where Spring Boot is running
 
-// Device configuration
-const char* DEVICE_ID = "DEVICE_001";
+// Device configuration (sẽ được lưu vào flash)
+String DEVICE_ID = "DEVICE_001";
+
+// WiFiManager instance
+WiFiManager wm;
+
+// Preferences để lưu cấu hình vào flash
+Preferences preferences;
 
 // Time configuration
 const char* ntpServer = "pool.ntp.org";
@@ -79,8 +101,8 @@ const int daylightOffset_sec = 0;
  #define LCD_COLUMNS 16
  #define LCD_ROWS 2
  
- // Button pin for manual refresh
- #define BUTTON_PIN 0
+// Button pin for manual refresh and config reset
+#define BUTTON_PIN 0
  
  // Buzzer pin
  #define BUZZER_PIN 15
@@ -98,6 +120,11 @@ const unsigned long DUPLICATE_SEND_INTERVAL = 15000; // 15 seconds
 const unsigned long TIME_UPDATE_INTERVAL = 1000; // Update time every 1 second
 bool wifiConnected = false;
 bool isDisplayingMessage = false; // Flag to prevent time update during message display
+bool shouldSaveConfig = false; // Flag for saving config
+
+// Custom parameters for WiFiManager
+WiFiManagerParameter custom_device_id("device_id", "Device ID", "DEVICE_001", 20);
+WiFiManagerParameter custom_server_url("server_url", "Server URL", "http://192.168.1.70:8080/api/attendance/rfid", 100);
  
  void setup() {
    Serial.begin(115200);
@@ -118,32 +145,31 @@ bool isDisplayingMessage = false; // Flag to prevent time update during message 
    SPI.begin();
    mfrc522.PCD_Init();
    
-  Serial.println("RFID Attendance System Starting...");
-  Serial.println("Device ID: " + String(DEVICE_ID));
-  Serial.println("Initializing RFID module...");
+   Serial.println("RFID Attendance System Starting...");
+   Serial.println("Initializing RFID module...");
    
    // Show RFID module info
    mfrc522.PCD_DumpVersionToSerial();
    
-   // Connect to WiFi
-   lcd.clear();
-   lcd.setCursor(0, 0);
-   lcd.print("Connecting to");
-   lcd.setCursor(0, 1);
-   lcd.print("WiFi...");
-   connectToWiFi();
+  // Load saved configuration
+  loadConfig();
+  
+  // Check WiFi configuration status
+  checkWiFiConfigStatus();
+  
+  // Setup WiFiManager
+  setupWiFiManager();
    
    Serial.println("System ready! Place RFID card near the reader.");
    
-  // Display ready message on LCD
-  lcd.setCursor(0, 0);
-  lcd.print("Sync time...");
-  lcd.setCursor(0, 1);
-  lcd.print("RFID Ready!");
- 
-  
-  // Configure time after WiFi connection
-  setupTime();
+   // Display ready message on LCD
+   lcd.setCursor(0, 0);
+   lcd.print("Sync time...");
+   lcd.setCursor(0, 1);
+   lcd.print("RFID Ready!");
+
+   // Configure time after WiFi connection
+   setupTime();
  }
  
 void loop() {
@@ -162,7 +188,7 @@ void loop() {
     }
   }
   
-  // Check WiFi connection
+   // Check WiFi connection
   if (WiFi.status() != WL_CONNECTED) {
      wifiConnected = false;
      lcd.clear();
@@ -171,7 +197,51 @@ void loop() {
      lcd.setCursor(0, 1);
      lcd.print("Reconnecting...");
      Serial.println("WiFi disconnected. Attempting to reconnect...");
-     connectToWiFi();
+     
+     // Try to reconnect with saved credentials
+     if (ssid != "" && password != "") {
+       Serial.println("Reconnecting to saved WiFi: " + ssid);
+       WiFi.begin(ssid.c_str(), password.c_str());
+       
+       // Wait for reconnection with timeout
+       int reconnectAttempts = 0;
+       while (WiFi.status() != WL_CONNECTED && reconnectAttempts < 10) {
+         delay(1000);
+         reconnectAttempts++;
+         Serial.print(".");
+       }
+       
+       if (WiFi.status() == WL_CONNECTED) {
+         wifiConnected = true;
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("WiFi Reconnected!");
+         lcd.setCursor(0, 1);
+         lcd.print(WiFi.localIP().toString());
+         Serial.println("");
+         Serial.println("WiFi reconnected successfully!");
+         Serial.print("IP address: ");
+         Serial.println(WiFi.localIP());
+         delay(2000);
+       } else {
+         Serial.println("");
+         Serial.println("Failed to reconnect to WiFi");
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("Reconnect Failed");
+         lcd.setCursor(0, 1);
+         lcd.print("Check WiFi");
+         delay(2000);
+       }
+     } else {
+       Serial.println("No saved WiFi credentials for reconnection");
+       lcd.clear();
+       lcd.setCursor(0, 0);
+       lcd.print("No WiFi Config");
+       lcd.setCursor(0, 1);
+       lcd.print("Hold button 5s");
+       delay(2000);
+     }
    } else if (!wifiConnected) {
      wifiConnected = true;
      lcd.clear();
@@ -183,17 +253,59 @@ void loop() {
      delay(2000);
    }
    
-   // Check for button press (manual refresh)
+   // Check for button press (reset config)
    if (digitalRead(BUTTON_PIN) == LOW) {
      delay(50); // Debounce
      if (digitalRead(BUTTON_PIN) == LOW) {
-       Serial.println("Manual refresh triggered");
+       Serial.println("Button pressed - checking for config reset");
        lcd.clear();
        lcd.setCursor(0, 0);
-       lcd.print("Manual Refresh");
+       lcd.print("Hold 5s to");
        lcd.setCursor(0, 1);
-       lcd.print("Ready to scan");
-       delay(1000);
+       lcd.print("Reset Config");
+       
+       // Wait for 5 seconds to see if button is held
+       unsigned long buttonStart = millis();
+       while (digitalRead(BUTTON_PIN) == LOW && (millis() - buttonStart) < 5000) {
+         delay(100);
+       }
+       
+       if (millis() - buttonStart >= 5000) {
+         // Button held for 5 seconds - reset config
+         Serial.println("Resetting WiFi configuration...");
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("Resetting");
+         lcd.setCursor(0, 1);
+         lcd.print("Config...");
+         
+         // Clear saved credentials
+         preferences.begin("rfid_config", false);
+         preferences.clear();
+         preferences.end();
+         
+         // Reset WiFi settings
+         WiFi.disconnect(true);
+         delay(1000);
+         
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("Config Reset!");
+         lcd.setCursor(0, 1);
+         lcd.print("Restarting...");
+         delay(2000);
+         
+         ESP.restart();
+       } else {
+         // Short press - just refresh display
+         Serial.println("Short button press - refreshing display");
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("Display Refresh");
+         lcd.setCursor(0, 1);
+         lcd.print("Ready to scan");
+         delay(1000);
+       }
      }
    }
    
@@ -294,13 +406,13 @@ void loop() {
   }
    
    HTTPClient http;
-   http.begin(serverURL);
+   http.begin(serverURL.c_str());
    http.addHeader("Content-Type", "application/json");
    
   // Create JSON payload
   DynamicJsonDocument doc(1024);
   doc["rfid"] = rfid;
-  doc["maThietBi"] = DEVICE_ID;
+  doc["maThietBi"] = DEVICE_ID.c_str();
    
    String jsonString;
    serializeJson(doc, jsonString);
@@ -401,54 +513,11 @@ void loop() {
    http.end();
  }
  
+ // Legacy connectToWiFi function - now handled by setupWiFiManager
  void connectToWiFi() {
-   Serial.println("Connecting to WiFi: " + String(ssid));
-   
-   WiFi.begin(ssid, password);
-   
-   int attempts = 0;
-   while (WiFi.status() != WL_CONNECTED && attempts < 20) {
-     delay(1000);
-     Serial.print(".");
-     attempts++;
-     
-     // Display connecting progress on LCD
-     lcd.clear();
-     lcd.setCursor(0, 0);
-     lcd.print("Connecting...");
-     lcd.setCursor(0, 1);
-     lcd.print("Attempt " + String(attempts));
-   }
-   
-   if (WiFi.status() == WL_CONNECTED) {
-     Serial.println("");
-     Serial.println("WiFi connected successfully!");
-     Serial.print("IP address: ");
-     Serial.println(WiFi.localIP());
-     Serial.print("Signal strength: ");
-     Serial.print(WiFi.RSSI());
-     Serial.println(" dBm");
-     
-     wifiConnected = true;
-     
-     // Display success message on LCD
-     lcd.clear();
-     lcd.setCursor(0, 0);
-     lcd.print("WiFi Connected!");
-     lcd.setCursor(0, 1);
-     lcd.print(WiFi.localIP().toString());
-     delay(2000);
-   } else {
-     Serial.println("");
-     Serial.println("Failed to connect to WiFi!");
-     wifiConnected = false;
-     lcd.clear();
-     lcd.setCursor(0, 0);
-     lcd.print("WiFi Failed!");
-     lcd.setCursor(0, 1);
-     lcd.print("Check credentials");
-     delay(2000);
-   }
+   // This function is now replaced by setupWiFiManager()
+   // Kept for compatibility but not used
+   Serial.println("connectToWiFi() called - use setupWiFiManager() instead");
  }
  
  // Function to display message on LCD with timeout
@@ -542,5 +611,231 @@ void printWiFiStatus() {
   Serial.println("Signal Strength: " + String(WiFi.RSSI()) + " dBm");
   Serial.println("MAC Address: " + WiFi.macAddress());
   Serial.println("==================");
+}
+
+// Function to check and display WiFi configuration status
+void checkWiFiConfigStatus() {
+  Serial.println("=== WiFi Configuration Status ===");
+  Serial.println("Saved SSID: " + String(ssid.length() > 0 ? ssid.c_str() : "[NOT SAVED]"));
+  Serial.println("Saved Password: " + String(password.length() > 0 ? "[SAVED]" : "[NOT SAVED]"));
+  Serial.println("Current SSID: " + WiFi.SSID());
+  Serial.println("WiFi Status: " + String(WiFi.status()));
+  Serial.println("Connection Status: " + String(wifiConnected ? "CONNECTED" : "DISCONNECTED"));
+  
+  // Check if saved credentials match current connection
+  if (ssid.length() > 0 && WiFi.SSID() == ssid) {
+    Serial.println("✓ Saved credentials match current connection");
+  } else if (ssid.length() > 0) {
+    Serial.println("⚠ Saved credentials don't match current connection");
+  } else {
+    Serial.println("⚠ No WiFi credentials saved");
+  }
+  Serial.println("=====================================");
+}
+
+// Save configuration to flash memory
+void saveConfig() {
+  preferences.begin("rfid_config", false);
+  preferences.putString("ssid", ssid);
+  preferences.putString("password", password);
+  preferences.putString("device_id", DEVICE_ID);
+  preferences.putString("server_url", serverURL);
+  preferences.putBool("wifi_saved", true); // Flag to indicate WiFi is saved
+  preferences.end();
+  Serial.println("Configuration saved to flash");
+  Serial.println("SSID: " + ssid);
+  Serial.println("Password: [HIDDEN]");
+  Serial.println("Device ID: " + DEVICE_ID);
+  Serial.println("Server URL: " + serverURL);
+}
+
+// Load configuration from flash memory
+void loadConfig() {
+  preferences.begin("rfid_config", false);
+  ssid = preferences.getString("ssid", "");
+  password = preferences.getString("password", "");
+  DEVICE_ID = preferences.getString("device_id", "DEVICE_001");
+  serverURL = preferences.getString("server_url", "http://192.168.1.70:8080/api/attendance/rfid");
+  bool wifiSaved = preferences.getBool("wifi_saved", false);
+  preferences.end();
+  
+  Serial.println("Configuration loaded from flash:");
+  Serial.println("SSID: " + ssid);
+  Serial.println("Password: " + String(password.length() > 0 ? "[SAVED]" : "[NOT SAVED]"));
+  Serial.println("Device ID: " + DEVICE_ID);
+  Serial.println("Server URL: " + serverURL);
+  Serial.println("WiFi Saved Flag: " + String(wifiSaved ? "YES" : "NO"));
+}
+
+// Callback function for saving configuration
+void saveConfigCallback() {
+  Serial.println("Should save config");
+  shouldSaveConfig = true;
+}
+
+// Setup WiFiManager with custom parameters
+void setupWiFiManager() {
+  // Check if button is pressed on startup (reset config)
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    Serial.println("Button pressed on startup - entering config mode");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Config Mode");
+    lcd.setCursor(0, 1);
+    lcd.print("Hold button...");
+    delay(3000);
+    
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      Serial.println("Clearing saved WiFi credentials");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Clearing WiFi");
+      lcd.setCursor(0, 1);
+      lcd.print("credentials...");
+      
+      // Clear saved credentials
+      preferences.begin("rfid_config", false);
+      preferences.clear();
+      preferences.end();
+      
+      // Reset WiFi settings
+      WiFi.disconnect(true);
+      delay(1000);
+    }
+  }
+  
+  // Set save config callback
+  wm.setSaveConfigCallback(saveConfigCallback);
+  
+  // Add custom parameters
+  wm.addParameter(&custom_device_id);
+  wm.addParameter(&custom_server_url);
+  
+  // Set custom hostname
+  wm.setHostname("RFID-Device");
+  
+  // Set timeout for config portal (3 minutes)
+  wm.setConfigPortalTimeout(180);
+  
+  // Display on LCD
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Setup");
+  lcd.setCursor(0, 1);
+  lcd.print("Starting...");
+  
+  // Try to connect with saved credentials
+  if (ssid != "" && password != "") {
+    Serial.println("Trying to connect with saved credentials...");
+    Serial.println("SSID: " + ssid);
+    Serial.println("Password: [SAVED]");
+    
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting to");
+    lcd.setCursor(0, 1);
+    lcd.print(ssid);
+    
+    // Set WiFi mode to station
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid.c_str(), password.c_str());
+    
+    int attempts = 0;
+    const int maxAttempts = 15; // Increase attempts for better reliability
+    
+    while (WiFi.status() != WL_CONNECTED && attempts < maxAttempts) {
+      delay(1000);
+      Serial.print(".");
+      attempts++;
+      
+      // Update LCD every 3 attempts
+      if (attempts % 3 == 0) {
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.print("Connecting...");
+        lcd.setCursor(0, 1);
+        lcd.print("Attempt " + String(attempts));
+      }
+    }
+    
+    if (WiFi.status() == WL_CONNECTED) {
+      wifiConnected = true;
+      Serial.println("");
+      Serial.println("WiFi connected with saved credentials!");
+      Serial.print("IP address: ");
+      Serial.println(WiFi.localIP());
+      Serial.print("Signal strength: ");
+      Serial.print(WiFi.RSSI());
+      Serial.println(" dBm");
+      
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("WiFi Connected!");
+      lcd.setCursor(0, 1);
+      lcd.print(WiFi.localIP().toString());
+      delay(2000);
+      return;
+    } else {
+      Serial.println("");
+      Serial.println("Failed to connect with saved credentials after " + String(maxAttempts) + " attempts");
+      Serial.println("WiFi Status: " + String(WiFi.status()));
+    }
+  } else {
+    Serial.println("No saved WiFi credentials found");
+  }
+  
+  // If connection failed, start config portal
+  Serial.println("Failed to connect with saved credentials. Starting config portal...");
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Starting Config");
+  lcd.setCursor(0, 1);
+  lcd.print("Portal...");
+  
+  // Start config portal
+  if (!wm.startConfigPortal("RFID-Device", "12345678")) {
+    Serial.println("Failed to connect and hit timeout");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Config Timeout");
+    lcd.setCursor(0, 1);
+    lcd.print("Restarting...");
+    delay(3000);
+    ESP.restart();
+  }
+  
+  // If we get here, we are connected
+  wifiConnected = true;
+  Serial.println("Connected to WiFi!");
+  
+  // Save custom parameters and WiFi credentials
+  if (shouldSaveConfig) {
+    // Update device settings
+    DEVICE_ID = String(custom_device_id.getValue());
+    serverURL = String(custom_server_url.getValue());
+    
+    // Update WiFi credentials from current connection
+    ssid = WiFi.SSID();
+    password = WiFi.psk();
+    
+    // Save everything to flash
+    saveConfig();
+    shouldSaveConfig = false;
+    
+    Serial.println("=== Configuration Saved Successfully ===");
+    Serial.println("WiFi SSID: " + ssid);
+    Serial.println("WiFi Password: [SAVED]");
+    Serial.println("Device ID: " + DEVICE_ID);
+    Serial.println("Server URL: " + serverURL);
+    Serial.println("=========================================");
+  }
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("WiFi Connected!");
+  lcd.setCursor(0, 1);
+  lcd.print(WiFi.localIP().toString());
+  delay(2000);
 }
  
