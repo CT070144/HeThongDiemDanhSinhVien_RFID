@@ -30,7 +30,8 @@ public class SecurityConfig {
                         // Public endpoints
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/attendance/rfid").permitAll() // RFID endpoint cho phép public
-                        .requestMatchers("/api/attendance/debug/**").permitAll() // Debug endpoints
+                        .requestMatchers("/api/attendance/debug/**").permitAll()
+                        .requestMatchers("/socket.io/**").permitAll() // Debug endpoints
                         // Protected endpoints
                         .anyRequest().authenticated()
                 )

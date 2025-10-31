@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge } from 'react-bootstrap';
 import * as XLSX from 'xlsx';
 import { toast } from 'react-toastify';
 import { attendanceAPI } from '../services/api';
 import api from '../services/api';
+import io  from "socket.io-client";
+import { formatTime } from '../services/format-time';
+
 
 const AttendanceHistory = () => {
   const [attendance, setAttendance] = useState([]);
@@ -11,6 +14,7 @@ const AttendanceHistory = () => {
   const [allFilteredAttendance, setAllFilteredAttendance] = useState([]);
   const [lopHocPhans, setLopHocPhans] = useState([]);
   const [studentsInLop, setStudentsInLop] = useState([]);
+  const socketRef = useRef(null);
   const [attendanceStats, setAttendanceStats] = useState({
     totalStudents: 0,
     attended: 0,
@@ -34,22 +38,7 @@ const AttendanceHistory = () => {
   useEffect(() => {
     loadAttendance();
     loadLopHocPhans();
-    let isFetching = false;
-    const intervalId = setInterval(async () => {
-      if (isFetching) return;
-      isFetching = true;
-      try {
-        await loadAttendance();
-      } catch (e) {
-        // tránh spam toast khi polling
-        // console.error(e);
-      } finally {
-        isFetching = false;
-      }
-    }, 1000);
-    return () => clearInterval(intervalId);
   }, []);
-
   const loadLopHocPhans = async () => {
     try {
       const response = await api.get('/lophocphan');
@@ -58,6 +47,63 @@ const AttendanceHistory = () => {
       console.error('Error loading lop hoc phan:', error);
     }
   };
+  useEffect(() => {
+    // Initialize socket connection only once
+    if (!socketRef.current) {
+      console.log("Initializing socket connection...");
+
+      const connectionUrl = "http://localhost:8099";
+
+      socketRef.current = io(connectionUrl, {
+        path: "/socket.io",
+        query: { token: localStorage.getItem('token') },
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+      socketRef.current.on("connect", () => {
+        console.log("Socket connected");
+      });
+
+      socketRef.current.on("disconnect", () => {
+        console.log("Socket disconnected");
+      });
+
+      socketRef.current.on("connect_error", (err) => {
+        console.error("Socket connect_error:", err.message || err);
+      });
+
+      socketRef.current.on("update-attendance", (result) => {
+        console.log("New message received:", result);
+        result = JSON.parse(result);
+      setAttendance((prev) => {
+        // replace if same id exists; otherwise prepend
+        const index = prev.findIndex((r) => r.id === result.id);
+        let next;
+        if (index !== -1) {
+          next = [...prev];
+          next[index] = result;
+        } else {
+          next = [result, ...prev];
+        }
+        return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      });
+
+
+
+      });
+    }
+
+    // Cleanup function - disconnect socket when component unmounts
+    return () => {
+      if (socketRef.current) {
+        console.log("Disconnecting socket...");
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []);
 
   const filterAttendance = useCallback(async () => {
     let filtered = [...attendance];
@@ -175,7 +221,7 @@ const AttendanceHistory = () => {
       // tránh spam toast do polling liên tục
       // toast.error('Lỗi khi tải lịch sử điểm danh');
     }
-  console.log(allFilteredAttendance);
+
   };
 
 
@@ -461,6 +507,9 @@ const AttendanceHistory = () => {
     return caMap[ca] || `Ca ${ca}`;
   };
 
+  // Format time strings like "15:41:03.7472476" to "15:41:03"
+  
+
 
   return (
     <Container>
@@ -606,15 +655,15 @@ const AttendanceHistory = () => {
                 </thead>
                 <tbody>
                   {filteredAttendance.map((record) => (
-                    <tr key={record.id}>
+                    <tr key={record.id ?? `${record.rfid || 'rfid'}-${record.createdAt || record.ngay || ''}-${record.ca || ''}`}>
                       <td>{record.rfid}</td>
                       <td>{record.maSinhVien}</td>
                       <td>{record.tenSinhVien}</td>
                       <td>{record.phongHoc || '-'}</td>
                       <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
                       <td>{getCaName(record.ca)}</td>
-                      <td>{record.gioVao || '-'}</td>
-                      <td>{record.gioRa || '-'}</td>
+                      <td>{formatTime(record.gioVao)}</td>
+                      <td>{formatTime(record.gioRa)}</td>
                       <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
                       <td>{getAttendanceStatusBadge(record.trangThai)}</td>
                       <td>{new Date(record.createdAt).toLocaleString('vi-VN')}</td>

@@ -1,13 +1,10 @@
 package com.rfid.attendance.service;
 
-import com.rfid.attendance.entity.DocRfid;
-import com.rfid.attendance.entity.PhieuDiemDanh;
-import com.rfid.attendance.entity.SinhVien;
-import com.rfid.attendance.entity.ThietBi;
-import com.rfid.attendance.repository.DocRfidRepository;
-import com.rfid.attendance.repository.PhieuDiemDanhRepository;
-import com.rfid.attendance.repository.SinhVienRepository;
-import com.rfid.attendance.repository.ThietBiRepository;
+import com.corundumstudio.socketio.SocketIOServer;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rfid.attendance.entity.*;
+import com.rfid.attendance.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -16,7 +13,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @Transactional
@@ -27,12 +27,20 @@ public class AttendanceService {
     
     @Autowired
     private SinhVienRepository sinhVienRepository;
+
+    @Autowired
+    private WebSocketSessionRepository webSocketSessionRepository;
     
     @Autowired
     private DocRfidRepository docRfidRepository;
 
     @Autowired
     private ThietBiRepository thietBiRepository;
+
+    @Autowired
+    ObjectMapper objectMapper;
+    @Autowired
+    private SocketIOServer socketIOServer;
     
     public List<PhieuDiemDanh> getAllAttendance() {
         return phieuDiemDanhRepository.findAll();
@@ -50,7 +58,7 @@ public class AttendanceService {
         return phieuDiemDanhRepository.findByMaSinhVien(maSinhVien);
     }
     
-    public PhieuDiemDanh processRfidAttendance(String rfid) {
+    public PhieuDiemDanh processRfidAttendance(String rfid){
         // Log thông tin debug
         System.out.println("=== RFID ATTENDANCE DEBUG ===");
         System.out.println("RFID nhận được: '" + rfid + "'");
@@ -116,7 +124,10 @@ public class AttendanceService {
                 record.setTrangThai(trangThai);
                 
                 System.out.println("Sinh viên điểm danh ra lúc: " + currentTime + ", Trạng thái: " + trangThai.getDescription());
-                return phieuDiemDanhRepository.save(record);
+
+
+                PhieuDiemDanh result = phieuDiemDanhRepository.save(record);
+                return  result;
             } else {
                 System.out.println("Sinh viên đã điểm danh ra trong ca này");
                 PhieuDiemDanh response = new PhieuDiemDanh();
@@ -141,13 +152,13 @@ public class AttendanceService {
             newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
             
             System.out.println("Tạo phiếu điểm danh mới: " + newRecord.getTenSinhVien() + " - Ca " + currentCa);
-            return phieuDiemDanhRepository.save(newRecord);
+            PhieuDiemDanh result = phieuDiemDanhRepository.save(newRecord);
+            return result;
         }
     }
 
     public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
         PhieuDiemDanh record = processRfidAttendance(rfid);
-        System.out.println(record.getRfid());
         if (record.getRfid() == null) return record;
         if (maThietBi != null && !maThietBi.isEmpty() && record.getCa() != -99) {
             Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
@@ -156,7 +167,17 @@ public class AttendanceService {
                 phieuDiemDanhRepository.save(record);
             });
         }
-        System.out.printf("lỗi đấyyy");
+        //publish event
+        socketIOServer.getAllClients().forEach(client ->{
+            String message = null;
+            try {
+                message = objectMapper.writeValueAsString(record);
+            } catch (JsonProcessingException e) {
+                System.out.println("error convert object");
+            }
+            System.out.println("publishing event " + message);
+            client.sendEvent("update-attendance",message);
+        });
         return record;
     }
     

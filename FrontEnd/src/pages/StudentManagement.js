@@ -437,41 +437,7 @@ const StudentManagement = () => {
            
             </Card.Header>
             <Card.Body>
-              <Row className="mb-3">
-                <Col md={4}>
-                  <Form.Control
-                    type="text"
-                    placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                  />
-                </Col>
-                <Col md={4}>
-                  <Form.Select
-                    value={selectedLopHocPhan}
-                    onChange={(e) => setSelectedLopHocPhan(e.target.value)}
-                  >
-                    <option value="">Tất cả lớp học phần</option>
-                    {lopHocPhans.map((lop) => (
-                      <option key={lop.maLopHocPhan} value={lop.maLopHocPhan}>
-                        {lop.tenLopHocPhan}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Col>
-                <Col md={4} className="text-end">
-                  <Button 
-                    variant="success" 
-                    onClick={() => setShowImportModal(true)}
-                    className="me-2"
-                  >
-                   Cập nhật RFID
-                  </Button>
-                  <Button variant="primary" onClick={handleAddNew}>
-                    Thêm sinh viên mới
-                  </Button>
-                </Col>
-              </Row>
+            
 
               {selectedLopHocPhan && (
                 <Row className="mb-3">
@@ -557,6 +523,41 @@ const StudentManagement = () => {
                   </div>
                 </div>
               )}
+                <Row className="mb-3" style={{ marginTop: '10px' }}>
+                <Col md={4}>
+                  <Form.Control
+                    type="text"
+                    placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
+                    value={searchKeyword}
+                    onChange={(e) => setSearchKeyword(e.target.value)}
+                  />
+                </Col>
+                <Col md={4}>
+                  <Form.Select
+                    value={selectedLopHocPhan}
+                    onChange={(e) => setSelectedLopHocPhan(e.target.value)}
+                  >
+                    <option value="">Tất cả lớp học phần</option>
+                    {lopHocPhans.map((lop) => (
+                      <option key={lop.maLopHocPhan} value={lop.maLopHocPhan}>
+                        {lop.tenLopHocPhan}
+                      </option>
+                    ))}
+                  </Form.Select>
+                </Col>
+                <Col md={4} className="text-end">
+                  <Button 
+                    variant="success" 
+                    onClick={() => setShowImportModal(true)}
+                    className="me-2"
+                  >
+                   Cập nhật RFID
+                  </Button>
+                  <Button variant="primary" onClick={handleAddNew}>
+                    Thêm mới
+                  </Button>
+                </Col>
+              </Row>
             </Card.Body>
           </Card>
         </Col>

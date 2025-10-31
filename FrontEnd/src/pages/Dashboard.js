@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback,useRef } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
@@ -15,6 +15,8 @@ import {
   LineElement,
 } from 'chart.js';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
+import io  from "socket.io-client";
+import { formatTime } from '../services/format-time';
 
 // Register Chart.js components
 ChartJS.register(
@@ -41,6 +43,7 @@ const Dashboard = () => {
   const [pageSize] = useState(5);
   const [devices, setDevices] = useState([]);
   const [loading, setLoading] = useState(false);
+  const socketRef = useRef(null);
   const [chartData, setChartData] = useState({
     attendanceByCa: {},
     attendanceByHour: [],
@@ -59,6 +62,7 @@ const Dashboard = () => {
       // Load today's attendance
       const attendanceResponse = await attendanceAPI.getToday();
       const todayAttendance = attendanceResponse.data;
+      todayAttendance.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
       // Load unprocessed RFIDs
       const rfidsResponse = await attendanceAPI.getUnprocessedRfids();
@@ -90,11 +94,50 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadDashboardData();
-    // Refresh data every 30 seconds
-    const interval = setInterval(loadDashboardData, 30000);
-    return () => clearInterval(interval);
-  }, [loadDashboardData]);
+  }, []);
+  
+  useEffect(() => {
+    // Initialize socket connection only once
+    if (!socketRef.current) {
+      console.log("Initializing socket connection...");
 
+      const connectionUrl = "http://localhost:8099";
+
+      socketRef.current = io(connectionUrl, {
+        path: "/socket.io",
+        query: { token: localStorage.getItem('token') },
+        transports: ["websocket", "polling"],
+        reconnection: true,
+        reconnectionAttempts: 10,
+        reconnectionDelay: 1000,
+      });
+      socketRef.current.on("connect", () => {
+        console.log("Socket connected");
+      });
+
+      socketRef.current.on("disconnect", () => {
+        console.log("Socket disconnected");
+      });
+
+      socketRef.current.on("connect_error", (err) => {
+        console.error("Socket connect_error:", err.message || err);
+      });
+
+      socketRef.current.on("update-attendance", (result) => {
+       console.log("New message received:", result);
+       loadDashboardData();
+      });
+    }
+
+    // Cleanup function - disconnect socket when component unmounts
+    return () => {
+      if (socketRef.current) {
+        console.log("Disconnecting socket...");
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+    };
+  }, []);
 
   const getCurrentCa = () => {
     const now = new Date();
@@ -479,8 +522,8 @@ const Dashboard = () => {
                             <td>{record.maSinhVien}</td>
                             <td>{record.tenSinhVien}</td>
                             <td>{getCaName(record.ca)}</td>
-                            <td>{record.gioVao || '-'}</td>
-                            <td>{record.gioRa || '-'}</td>
+                            <td>{formatTime(record.gioVao)}</td>
+                            <td>{formatTime(record.gioRa)}</td>
                             <td>{getStatusBadge(record.trangThai)}</td>
                           </tr>
                         ))}
