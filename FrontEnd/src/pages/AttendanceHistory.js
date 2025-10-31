@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import { attendanceAPI } from '../services/api';
 import api from '../services/api';
 import io  from "socket.io-client";
+import { formatTime } from '../services/format-time';
 
 
 const AttendanceHistory = () => {
@@ -36,8 +37,16 @@ const AttendanceHistory = () => {
 
   useEffect(() => {
     loadAttendance();
-   
+    loadLopHocPhans();
   }, []);
+  const loadLopHocPhans = async () => {
+    try {
+      const response = await api.get('/lophocphan');
+      setLopHocPhans(response.data);
+    } catch (error) {
+      console.error('Error loading lop hoc phan:', error);
+    }
+  };
   useEffect(() => {
     // Initialize socket connection only once
     if (!socketRef.current) {
@@ -498,6 +507,9 @@ const AttendanceHistory = () => {
     return caMap[ca] || `Ca ${ca}`;
   };
 
+  // Format time strings like "15:41:03.7472476" to "15:41:03"
+  
+
 
   return (
     <Container>
@@ -650,8 +662,8 @@ const AttendanceHistory = () => {
                       <td>{record.phongHoc || '-'}</td>
                       <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
                       <td>{getCaName(record.ca)}</td>
-                      <td>{record.gioVao || '-'}</td>
-                      <td>{record.gioRa || '-'}</td>
+                      <td>{formatTime(record.gioVao)}</td>
+                      <td>{formatTime(record.gioRa)}</td>
                       <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
                       <td>{getAttendanceStatusBadge(record.trangThai)}</td>
                       <td>{new Date(record.createdAt).toLocaleString('vi-VN')}</td>

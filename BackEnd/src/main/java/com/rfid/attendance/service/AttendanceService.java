@@ -127,18 +127,6 @@ public class AttendanceService {
 
 
                 PhieuDiemDanh result = phieuDiemDanhRepository.save(record);
-
-
-                socketIOServer.getAllClients().forEach(client ->{
-                    System.out.println("sockethehe");
-                    String message = null;
-                    try {
-                        message = objectMapper.writeValueAsString(result);
-                    } catch (JsonProcessingException e) {
-                        System.out.println("error convert object");
-                    }
-                    client.sendEvent("update-attendance",message);
-                });
                 return  result;
             } else {
                 System.out.println("Sinh viên đã điểm danh ra trong ca này");
@@ -164,13 +152,13 @@ public class AttendanceService {
             newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
             
             System.out.println("Tạo phiếu điểm danh mới: " + newRecord.getTenSinhVien() + " - Ca " + currentCa);
-            return phieuDiemDanhRepository.save(newRecord);
+            PhieuDiemDanh result = phieuDiemDanhRepository.save(newRecord);
+            return result;
         }
     }
 
     public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
         PhieuDiemDanh record = processRfidAttendance(rfid);
-        System.out.println(record.getRfid());
         if (record.getRfid() == null) return record;
         if (maThietBi != null && !maThietBi.isEmpty() && record.getCa() != -99) {
             Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
@@ -179,7 +167,17 @@ public class AttendanceService {
                 phieuDiemDanhRepository.save(record);
             });
         }
-        System.out.printf("lỗi đấyyy");
+        //publish event
+        socketIOServer.getAllClients().forEach(client ->{
+            String message = null;
+            try {
+                message = objectMapper.writeValueAsString(record);
+            } catch (JsonProcessingException e) {
+                System.out.println("error convert object");
+            }
+            System.out.println("publishing event " + message);
+            client.sendEvent("update-attendance",message);
+        });
         return record;
     }
     
