@@ -5,6 +5,9 @@ import java.time.LocalDateTime;
 public class LopHocPhanDTO {
     private String maLopHocPhan;
     private String tenLopHocPhan;
+    private String giangVien;
+    private String phongHoc;
+    private String hinhThucHoc;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private long soSinhVien;
@@ -33,6 +36,30 @@ public class LopHocPhanDTO {
 
     public void setTenLopHocPhan(String tenLopHocPhan) {
         this.tenLopHocPhan = tenLopHocPhan;
+    }
+
+    public String getGiangVien() {
+        return giangVien;
+    }
+
+    public void setGiangVien(String giangVien) {
+        this.giangVien = giangVien;
+    }
+
+    public String getPhongHoc() {
+        return phongHoc;
+    }
+
+    public void setPhongHoc(String phongHoc) {
+        this.phongHoc = phongHoc;
+    }
+
+    public String getHinhThucHoc() {
+        return hinhThucHoc;
+    }
+
+    public void setHinhThucHoc(String hinhThucHoc) {
+        this.hinhThucHoc = hinhThucHoc;
     }
 
     public LocalDateTime getCreatedAt() {

@@ -17,6 +17,10 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.*;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,11 +52,42 @@ public class LopHocPhanService {
                 lop.getCreatedAt(),
                 lop.getUpdatedAt()
             );
+            dto.setGiangVien(lop.getGiangVien());
+            dto.setPhongHoc(lop.getPhongHoc());
+            dto.setHinhThucHoc(lop.getHinhThucHoc());
             dto.setSoSinhVien(countSinhVienInLopHocPhan(lop.getMaLopHocPhan()));
             dtos.add(dto);
         }
         
         return dtos;
+    }
+
+    @Transactional(readOnly = true)
+    public Page<LopHocPhanDTO> getPagedLopHocPhan(int page, int size, String keyword) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<LopHocPhan> pageData;
+        if (keyword != null && !keyword.trim().isEmpty()) {
+            pageData = lopHocPhanRepository.searchPaged(keyword.trim(), pageable);
+        } else {
+            pageData = lopHocPhanRepository.findAllByOrderByTenLopHocPhanAsc(pageable);
+        }
+
+        List<LopHocPhanDTO> dtoContent = new ArrayList<>();
+        for (LopHocPhan lop : pageData.getContent()) {
+            LopHocPhanDTO dto = new LopHocPhanDTO(
+                lop.getMaLopHocPhan(),
+                lop.getTenLopHocPhan(),
+                lop.getCreatedAt(),
+                lop.getUpdatedAt()
+            );
+            dto.setGiangVien(lop.getGiangVien());
+            dto.setPhongHoc(lop.getPhongHoc());
+            dto.setHinhThucHoc(lop.getHinhThucHoc());
+            dto.setSoSinhVien(countSinhVienInLopHocPhan(lop.getMaLopHocPhan()));
+            dtoContent.add(dto);
+        }
+
+        return new PageImpl<>(dtoContent, pageable, pageData.getTotalElements());
     }
     
     public Optional<LopHocPhan> getLopHocPhanByMaLopHocPhan(String maLopHocPhan) {
@@ -74,6 +109,9 @@ public class LopHocPhanService {
                 lop.getCreatedAt(),
                 lop.getUpdatedAt()
             );
+            dto.setGiangVien(lop.getGiangVien());
+            dto.setPhongHoc(lop.getPhongHoc());
+            dto.setHinhThucHoc(lop.getHinhThucHoc());
             dto.setSoSinhVien(countSinhVienInLopHocPhan(lop.getMaLopHocPhan()));
             dtos.add(dto);
         }
@@ -177,7 +215,7 @@ public class LopHocPhanService {
             }
             
             // Tạo mã lớp học phần từ tên
-            String maLopHocPhan = generateMaLopHocPhan(tenLopHocPhan);
+            String maLopHocPhan = com.rfid.attendance.util.LopHocPhanCodeUtil.generateMaLopHocPhan(tenLopHocPhan);
             
             // Tạo hoặc cập nhật lớp học phần
             LopHocPhan lopHocPhan;
@@ -274,40 +312,7 @@ public class LopHocPhanService {
         return result;
     }
     
-    private String generateMaLopHocPhan(String tenLopHocPhan) {
-        // Tìm số thứ tự từ tên lớp (ví dụ: C701, C702, C703)
-        Pattern pattern = Pattern.compile("\\(C(\\d+)\\)");
-        Matcher matcher = pattern.matcher(tenLopHocPhan);
-        
-        String soThuTu = "001";
-        if (matcher.find()) {
-            soThuTu = matcher.group(1);
-            // Đảm bảo có ít nhất 3 chữ số
-            while (soThuTu.length() < 3) {
-                soThuTu = "0" + soThuTu;
-            }
-        }
-        
-        // Tạo mã viết tắt từ tên lớp
-        String[] words = tenLopHocPhan.split("\\s+");
-        StringBuilder maVietTat = new StringBuilder();
-        
-        for (String word : words) {
-            if (word.equalsIgnoreCase("lớp:") || word.equalsIgnoreCase("phần")) {
-                continue;
-            }
-            if (word.length() > 0 && Character.isLetter(word.charAt(0))) {
-                maVietTat.append(Character.toUpperCase(word.charAt(0)));
-            }
-        }
-        
-        // Nếu không có từ nào, sử dụng CNPMN làm mặc định
-        if (maVietTat.length() == 0) {
-            maVietTat.append("CNPMN");
-        }
-        
-        return maVietTat.toString() + "-L" + soThuTu;
-    }
+    
     
     private String getCellValueAsString(Cell cell) {
         if (cell == null) {

@@ -19,6 +19,15 @@ public class LopHocPhan {
     @Column(name = "tenlophocphan", length = 200)
     @NotBlank(message = "Tên lớp học phần không được để trống")
     private String tenLopHocPhan;
+
+    @Column(name = "giangvien", length = 255)
+    private String giangVien;
+
+    @Column(name = "phonghoc", length = 100)
+    private String phongHoc;
+
+    @Column(name = "hinhthuchoc", length = 100)
+    private String hinhThucHoc;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -88,5 +97,29 @@ public class LopHocPhan {
     
     public void setSinhVienLopHocPhans(Set<SinhVienLopHocPhan> sinhVienLopHocPhans) {
         this.sinhVienLopHocPhans = sinhVienLopHocPhans;
+    }
+
+    public String getGiangVien() {
+        return giangVien;
+    }
+
+    public void setGiangVien(String giangVien) {
+        this.giangVien = giangVien;
+    }
+
+    public String getPhongHoc() {
+        return phongHoc;
+    }
+
+    public void setPhongHoc(String phongHoc) {
+        this.phongHoc = phongHoc;
+    }
+
+    public String getHinhThucHoc() {
+        return hinhThucHoc;
+    }
+
+    public void setHinhThucHoc(String hinhThucHoc) {
+        this.hinhThucHoc = hinhThucHoc;
     }
 }
