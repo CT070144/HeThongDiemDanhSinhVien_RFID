@@ -2,10 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Modal, Form, Alert, Badge, Spinner, Pagination, Tabs, Tab } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
+import { exportClassAttendanceMatrix } from '../services/exportExcel';
 import api from '../services/api';
+import { FaFileDownload } from "react-icons/fa";
 
 const LopHocPhanManagement = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
+  const [lhpPage, setLhpPage] = useState(0);
+  const [lhpSize, setLhpSize] = useState(10);
+  const [lhpTotalPages, setLhpTotalPages] = useState(0);
+  const [lhpTotalElements, setLhpTotalElements] = useState(0);
   const [sinhViens, setSinhViens] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -13,7 +19,10 @@ const LopHocPhanManagement = () => {
   const [selectedLopHocPhan, setSelectedLopHocPhan] = useState(null);
   const [searchKeyword, setSearchKeyword] = useState('');
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showCaHocImportModal, setShowCaHocImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
+  const [caHocImportFile, setCaHocImportFile] = useState(null);
+  const [tkbUploading, setTkbUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
   const [allStudents, setAllStudents] = useState([]);
@@ -37,13 +46,21 @@ const LopHocPhanManagement = () => {
   useEffect(() => {
     fetchLopHocPhans();
     fetchAllStudents();
-  }, []);
+  }, [lhpPage, lhpSize]);
 
   const fetchLopHocPhans = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/lophocphan');
-      setLopHocPhans(response.data);
+      const params = new URLSearchParams();
+      params.append('page', lhpPage);
+      params.append('size', lhpSize);
+      if (searchKeyword && searchKeyword.trim()) {
+        params.append('keyword', searchKeyword.trim());
+      }
+      const response = await api.get(`/lophocphan/paged?${params.toString()}`);
+      setLopHocPhans(response.data.content || []);
+      setLhpTotalPages(response.data.totalPages || 0);
+      setLhpTotalElements(response.data.totalElements || 0);
     } catch (error) {
       toast.error('Lỗi khi tải danh sách lớp học phần');
       console.error('Error fetching lop hoc phan:', error);
@@ -55,8 +72,8 @@ const LopHocPhanManagement = () => {
   const searchLopHocPhans = async () => {
     setLoading(true);
     try {
-      const response = await api.get(`/lophocphan/search?keyword=${encodeURIComponent(searchKeyword)}`);
-      setLopHocPhans(response.data);
+      setLhpPage(0);
+      await fetchLopHocPhans();
     } catch (error) {
       toast.error('Lỗi khi tìm kiếm lớp học phần');
       console.error('Error searching lop hoc phan:', error);
@@ -95,6 +112,43 @@ const LopHocPhanManagement = () => {
     } catch (error) {
       toast.error('Lỗi khi tải danh sách sinh viên');
       console.error('Error fetching students:', error);
+    }
+  };
+
+  const handleDownloadAttendanceMatrix = async (lop) => {
+    try {
+      // 1) Fetch sessions (ca, ngay) for this class
+      const sessionsRes = await api.get(`/cahoc/sessions?lopHocPhan=${encodeURIComponent(lop.tenLopHocPhan)}`);
+      const sessions = sessionsRes.data || [];
+      if (!sessions.length) {
+        toast.info('Chưa có lịch học trong ca_hoc cho lớp này');
+        return;
+      }
+
+      // 2) Fetch students of the class
+      const studentsRes = await api.get(`/lophocphan/${lop.maLopHocPhan}/sinhvien`);
+      const students = studentsRes.data || [];
+      if (!students.length) {
+        toast.info('Lớp chưa có sinh viên');
+        return;
+      }
+
+      // 3) Fetch all attendance and filter needed set
+      const attendanceRes = await api.get('/attendance');
+      const attendance = (attendanceRes.data || []).filter(r => 
+        students.some(s => s.maSinhVien === r.maSinhVien)
+      );
+
+      // 4) Export using util
+      exportClassAttendanceMatrix({
+        lopHocPhan: lop.maLopHocPhan,
+        students: students,
+        sessions: sessions,
+        attendance: attendance
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error('Lỗi khi tạo file điểm danh'+e.message);
     }
   };
 
@@ -153,6 +207,19 @@ const LopHocPhanManagement = () => {
     }
   };
 
+  const openStudentListFromInfo = async () => {
+    if (!formData.maLopHocPhan) {
+      toast.error('Chưa có mã lớp học phần');
+      return;
+    }
+    if (!lopHocPhans.some(lhp => lhp.maLopHocPhan === formData.maLopHocPhan)) {
+      toast.error('Lớp học phần chưa tồn tại, vui lòng lưu trước');
+      return;
+    }
+    setShowModal(false);
+    await fetchSinhViensByLopHocPhan(formData.maLopHocPhan);
+  };
+
   const handleDelete = async (maLopHocPhan, tenLopHocPhan) => {
     if (window.confirm(`Bạn có chắc chắn muốn xóa lớp học phần "${tenLopHocPhan}"?`)) {
       try {
@@ -193,6 +260,32 @@ const LopHocPhanManagement = () => {
       toast.error(message);
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleCaHocImportSubmit = async (e) => {
+    e.preventDefault();
+    if (!caHocImportFile) {
+      toast.error('Vui lòng chọn file Excel');
+      return;
+    }
+    const formData = new FormData();
+    formData.append('file', caHocImportFile);
+    try {
+      setTkbUploading(true);
+      const response = await api.post('/cahoc/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success('Import lịch học thành công: ' + (response.data?.count ?? ''));
+      setShowCaHocImportModal(false);
+      setCaHocImportFile(null);
+    } catch (error) {
+      const message = error.response?.data?.message || error.response?.data || 'Có lỗi xảy ra khi import';
+      toast.error(message);
+    }
+    finally {
+      setTkbUploading(false);
+      fetchLopHocPhans();
     }
   };
 
@@ -442,8 +535,12 @@ const LopHocPhanManagement = () => {
                 <Button variant="primary" onClick={handleCreate} className="me-2">
                   Thêm lớp học phần
                 </Button>
-                <Button variant="success" onClick={() => setShowImportModal(true)}>
-                  Import Excel
+                <Button 
+                  variant="secondary" 
+                  className="ms-2"
+                  onClick={() => setShowCaHocImportModal(true)}
+                >
+                  Import TKB
                 </Button>
               </div>
             </Card.Header>
@@ -469,6 +566,7 @@ const LopHocPhanManagement = () => {
                       className="ms-2"
                       onClick={() => {
                         setSearchKeyword('');
+                        setLhpPage(0);
                         fetchLopHocPhans();
                       }}
                     >
@@ -488,45 +586,48 @@ const LopHocPhanManagement = () => {
                 <Table responsive striped hover>
                   <thead>
                     <tr>
-                      <th>Mã lớp học phần</th>
-                      <th>Tên lớp học phần</th>
-                      <th>Số sinh viên</th>
-                      <th>Ngày tạo</th>
+                      <th style={{textAlign: 'left'}}>Mã lớp học phần</th>
+                      <th style={{textAlign: 'left'}}>Tên lớp học phần</th>
+                      <th style={{textAlign: 'left'} }>Giảng viên</th>
+                      <th style={{textAlign: 'left'}}>Hình thức học</th>
+                      <th style={{textAlign: 'left'}}>Phòng học</th>
+                      <th >Số sinh viên</th>
+                      <th>File điểm danh</th>
                       <th>Hành động</th>
                     </tr>
                   </thead>
                   <tbody>
                     {lopHocPhans.map((lopHocPhan) => (
                       <tr key={lopHocPhan.maLopHocPhan}>
-                        <td>
+                        <td style={{textAlign: 'left'}}>
                           <Badge bg="primary">{lopHocPhan.maLopHocPhan}</Badge>
                         </td>
-                        <td>{lopHocPhan.tenLopHocPhan}</td>
+                        
+                        <td style={{textAlign: 'left'}}>{lopHocPhan.tenLopHocPhan}</td>
+                        <td style={{textAlign: 'left'}}>{lopHocPhan.giangVien || '-'}</td>
+                        <td style={{textAlign: 'left'}}>{lopHocPhan.hinhThucHoc || '-'}</td>
+                        <td style={{textAlign: 'left'}}>{lopHocPhan.phongHoc || '-'}</td>
                         <td>
                           <Badge bg="info">
                             {lopHocPhan.soSinhVien || 0} sinh viên
                           </Badge>
                         </td>
-                        <td>{formatDate(lopHocPhan.createdAt)}</td>
                         <td>
-                          <Button
-                            variant="info"
-                            size="sm"
-                            className="me-1"
-                            onClick={() => fetchSinhViensByLopHocPhan(lopHocPhan.maLopHocPhan)}
-                          >
-                            Xem sinh viên
-                          </Button>
+                            <FaFileDownload size={30} color="gray" style={{cursor: 'pointer'}} onClick={() => handleDownloadAttendanceMatrix(lopHocPhan)} />
+                        </td>
+                        <td>
                           <Button
                             variant="warning"
                             size="sm"
                             className="me-1"
                             onClick={() => handleEdit(lopHocPhan)}
+                            style={{marginBottom: '5px'}}
                           >
                             Sửa
                           </Button>
                           <Button
                             variant="danger"
+                            style={{marginBottom: '5px'}}
                             size="sm"
                             onClick={() => handleDelete(lopHocPhan.maLopHocPhan, lopHocPhan.tenLopHocPhan)}
                           >
@@ -542,6 +643,32 @@ const LopHocPhanManagement = () => {
               {lopHocPhans.length === 0 && !loading && (
                 <div className="text-center py-4">
                   <p className="text-muted">Không có lớp học phần nào</p>
+                </div>
+              )}
+
+              {/* Pagination for LopHocPhan */}
+              {lhpTotalPages > 1 && (
+                <div className="d-flex justify-content-between align-items-center mt-3">
+                  <div className="text-muted small">Tổng: {lhpTotalElements} lớp học phần</div>
+                  <Pagination className="mb-0">
+                    <Pagination.Prev 
+                      disabled={lhpPage === 0}
+                      onClick={() => setLhpPage(Math.max(0, lhpPage - 1))}
+                    />
+                    {Array.from({ length: lhpTotalPages }, (_, i) => i).map(pageNumber => (
+                      <Pagination.Item
+                        key={pageNumber}
+                        active={pageNumber === lhpPage}
+                        onClick={() => setLhpPage(pageNumber)}
+                      >
+                        {pageNumber + 1}
+                      </Pagination.Item>
+                    ))}
+                    <Pagination.Next 
+                      disabled={lhpPage >= lhpTotalPages - 1}
+                      onClick={() => setLhpPage(Math.min(lhpTotalPages - 1, lhpPage + 1))}
+                    />
+                  </Pagination>
                 </div>
               )}
             </Card.Body>
@@ -583,6 +710,20 @@ const LopHocPhanManagement = () => {
                     required
                   />
                 </Form.Group>
+                <div className="d-flex justify-content-between">
+                  <div></div>
+                  <div className="d-flex gap-2">
+                    <Button 
+                      variant="outline-primary" 
+                      type="button"
+                      onClick={openStudentListFromInfo}
+                      disabled={!formData.maLopHocPhan || !lopHocPhans.some(lhp => lhp.maLopHocPhan === formData.maLopHocPhan)}
+                    >
+                      Danh sách SV
+                    </Button>
+                   
+                  </div>
+                </div>
               </Form>
             </Tab>
             
@@ -596,6 +737,11 @@ const LopHocPhanManagement = () => {
                   <h6 className="mb-0">Thêm sinh viên vào lớp</h6>
                 </Card.Header>
                 <Card.Body>
+                  <div className="d-flex justify-content-end mb-3">
+                    <Button variant="outline-success" size="sm" onClick={() => setShowImportModal(true)}>
+                      Import danh sách sinh viên từ Excel
+                    </Button>
+                  </div>
                   {/* Search */}
                   <Form.Group className="mb-3">
                     <Form.Label>Tìm kiếm sinh viên:</Form.Label>
@@ -851,6 +997,43 @@ const LopHocPhanManagement = () => {
             </Button>
             <Button variant="primary" type="submit" disabled={importing || !importFile}>
               {importing ? <Spinner size="sm" /> : 'Import'}
+            </Button>
+          </Modal.Footer>
+        </Form>
+      </Modal>
+
+      {/* Import CaHoc Modal */}
+      <Modal show={showCaHocImportModal} onHide={() => setShowCaHocImportModal(false)}>
+        <Modal.Header closeButton>
+          <Modal.Title>Import lịch học</Modal.Title>
+        </Modal.Header>
+        <Form onSubmit={handleCaHocImportSubmit}>
+          <Modal.Body>
+            <Alert variant="info">
+              <strong>Chọn file Excel (.xls/.xlsx).</strong>
+            </Alert>
+            {tkbUploading && (
+              <div className="d-flex align-items-center mb-3">
+                <Spinner animation="border" size="sm" className="me-2" />
+                <span>Đang tải file...</span>
+              </div>
+            )}
+            <Form.Group className="mb-3">
+              <Form.Label>Chọn file Excel</Form.Label>
+              <Form.Control
+                type="file"
+                accept=".xls,.xlsx"
+                onChange={(e) => setCaHocImportFile(e.target.files[0])}
+                required
+              />
+            </Form.Group>
+          </Modal.Body>
+          <Modal.Footer>
+            <Button variant="secondary" onClick={() => setShowCaHocImportModal(false)}>
+              Hủy
+            </Button>
+            <Button variant="primary" type="submit" disabled={!caHocImportFile || tkbUploading}>
+              {tkbUploading ? 'Đang tải...' : 'Import'}
             </Button>
           </Modal.Footer>
         </Form>

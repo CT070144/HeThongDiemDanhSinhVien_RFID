@@ -37,7 +37,7 @@
 }
 
 .card {
-  margin-bottom: 20px;
+  margin-bottom: 5px;
 }
 
 .table-responsive {
@@ -46,6 +46,11 @@
 
 .btn-group {
   margin: 5px;
+}
+
+/* Ensure all buttons have bottom spacing in pages */
+.btn {
+  margin-top: 5px !important;
 }
 
 .form-control {

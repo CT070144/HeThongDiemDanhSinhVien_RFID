@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
@@ -28,6 +29,25 @@ public class LopHocPhanController {
         try {
             List<LopHocPhanDTO> lopHocPhans = lopHocPhanService.getAllLopHocPhan();
             return ResponseEntity.ok(lopHocPhans);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @GetMapping("/paged")
+    public ResponseEntity<Map<String, Object>> getPagedLopHocPhan(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String keyword) {
+        try {
+            Page<LopHocPhanDTO> result = lopHocPhanService.getPagedLopHocPhan(page, size, keyword);
+            Map<String, Object> body = new HashMap<>();
+            body.put("content", result.getContent());
+            body.put("page", result.getNumber());
+            body.put("size", result.getSize());
+            body.put("totalElements", result.getTotalElements());
+            body.put("totalPages", result.getTotalPages());
+            return ResponseEntity.ok(body);
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }

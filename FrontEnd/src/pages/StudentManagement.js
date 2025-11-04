@@ -454,11 +454,11 @@ const StudentManagement = () => {
               <Table responsive striped bordered hover>
                 <thead>
                   <tr>
-                    <th>Mã sinh viên</th>
-                    <th>RFID</th>
-                    <th>Tên sinh viên</th>
-                    <th>Ngày tạo</th>
-                    <th>Thao tác</th>
+                    <th style={{textAlign:'left'}}>Mã sinh viên</th>
+                    <th style={{textAlign:'left'}}>RFID</th>
+                    <th style={{textAlign:'left'}}>Tên sinh viên</th>
+                    <th style={{textAlign:'left'}}>Ngày tạo</th>
+                    <th style={{textAlign:'left'}}>Thao tác</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -466,14 +466,14 @@ const StudentManagement = () => {
                     .slice((page - 1) * pageSize, page * pageSize)
                     .map((student) => (
                     <tr key={student.maSinhVien}>
-                      <td>
+                      <td style={{textAlign:'left'}}>
                         <Badge bg="primary">{student.maSinhVien}</Badge>
                       </td>
-                      <td>
+                      <td style={{textAlign:'left'}}>
                         <Badge bg="info">{student.rfid}</Badge>
                       </td>
-                      <td>{student.tenSinhVien}</td>
-                      <td>{new Date(student.createdAt).toLocaleDateString('vi-VN')}</td>
+                      <td style={{textAlign:'left'}}>{student.tenSinhVien}</td>
+                      <td style={{textAlign:'left'}}>{new Date(student.createdAt).toLocaleDateString('vi-VN')}</td>
                       <td>
                         <Button
                           variant="warning"
@@ -524,7 +524,7 @@ const StudentManagement = () => {
                 </div>
               )}
                 <Row className="mb-3" style={{ marginTop: '10px' }}>
-                <Col md={4}>
+                <Col md={8}>
                   <Form.Control
                     type="text"
                     placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
@@ -532,19 +532,7 @@ const StudentManagement = () => {
                     onChange={(e) => setSearchKeyword(e.target.value)}
                   />
                 </Col>
-                <Col md={4}>
-                  <Form.Select
-                    value={selectedLopHocPhan}
-                    onChange={(e) => setSelectedLopHocPhan(e.target.value)}
-                  >
-                    <option value="">Tất cả lớp học phần</option>
-                    {lopHocPhans.map((lop) => (
-                      <option key={lop.maLopHocPhan} value={lop.maLopHocPhan}>
-                        {lop.tenLopHocPhan}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Col>
+               
                 <Col md={4} className="text-end">
                   <Button 
                     variant="success" 
