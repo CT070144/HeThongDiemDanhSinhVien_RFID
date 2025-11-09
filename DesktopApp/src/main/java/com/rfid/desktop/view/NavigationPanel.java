@@ -30,20 +30,12 @@ public class NavigationPanel extends JPanel {
         this.listener = listener;
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setPreferredSize(new Dimension(220, 0));
-        setBorder(new EmptyBorder(16, 16, 16, 16));
+        setBorder(new EmptyBorder(16, 10, 16, 16));
         setBackground(Color.WHITE);
 
-        JLabel nameLabel = new JLabel("Xin chào, " + user.getFullName());
-        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        add(nameLabel);
+       
 
-        String roleText = user.getRoleDescription() != null ? user.getRoleDescription() : user.getRole();
-        JLabel roleLabel = new JLabel(roleText != null ? roleText : "");
-        roleLabel.setForeground(new Color(100, 100, 100));
-        roleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        add(roleLabel);
-
-        add(Box.createVerticalStrut(20));
+        
 
         addNavButton("Dashboard", MainFrame.SCREEN_DASHBOARD);
         addNavButton("Sinh viên", MainFrame.SCREEN_STUDENTS);
@@ -52,13 +44,25 @@ public class NavigationPanel extends JPanel {
         addNavButton("Thiết bị", MainFrame.SCREEN_DEVICES);
 
         add(Box.createVerticalGlue());
+        JLabel nameLabel = new JLabel("Xin chào, " + user.getFullName());
+        nameLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        nameLabel.setBorder(new EmptyBorder(10, 0, 0, 0));
+        add(nameLabel);
 
+        String roleText = user.getRoleDescription() != null ? user.getRoleDescription() : user.getRole();
+        JLabel roleLabel = new JLabel(roleText != null ? roleText : "");
+        roleLabel.setForeground(new Color(100, 100, 100));
+        roleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        roleLabel.setBorder(new EmptyBorder(10, 0, 0, 0));
+        add(roleLabel);
+        add(Box.createVerticalStrut(20));   
         JButton logoutButton = new JButton("Đăng xuất");
         logoutButton.setAlignmentX(Component.LEFT_ALIGNMENT);
+        logoutButton.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         logoutButton.addActionListener(e -> listener.onLogoutRequested());
         logoutButton.setBackground(new Color(240, 77, 77));
         logoutButton.setForeground(Color.WHITE);
-        logoutButton.setBorder(BorderFactory.createEmptyBorder(10, 14, 10, 14));
+        logoutButton.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 14));
         add(logoutButton);
     }
 
@@ -68,7 +72,8 @@ public class NavigationPanel extends JPanel {
         button.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         button.setFocusPainted(false);
         button.setBackground(new Color(242, 245, 249));
-        button.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
+        button.setBorder(BorderFactory.createEmptyBorder(8, 0, 8, 12));
+        button.setHorizontalAlignment(javax.swing.SwingConstants.LEFT);
         button.addActionListener(e -> listener.navigateTo(screenId));
         add(button);
         add(Box.createVerticalStrut(8));
@@ -82,4 +87,3 @@ public class NavigationPanel extends JPanel {
         });
     }
 }
-

@@ -32,6 +32,8 @@ public final class AttendanceChartFactory {
         chart.getStyler().setLegendVisible(false);
         chart.getStyler().setYAxisMin(0.0);
         chart.getStyler().setPlotGridVerticalLinesVisible(false);
+        chart.getStyler().setChartBackgroundColor(Color.WHITE);
+        chart.getStyler().setPlotBackgroundColor(Color.WHITE);
 
         List<Integer> categories = List.of(1, 2, 3, 4, 5);
         List<Long> values = new ArrayList<>();
@@ -54,6 +56,8 @@ public final class AttendanceChartFactory {
         chart.getStyler().setLegendVisible(true);
         chart.getStyler().setLegendPosition(Styler.LegendPosition.OutsideS);
         chart.getStyler().setPlotContentSize(0.8);
+        chart.getStyler().setChartBackgroundColor(Color.WHITE);
+        chart.getStyler().setPlotBackgroundColor(Color.WHITE);
 
         Color[] colors = new Color[]{
                 new Color(40, 167, 69),
@@ -89,6 +93,8 @@ public final class AttendanceChartFactory {
         chart.getStyler().setLegendVisible(false);
         chart.getStyler().setYAxisMin(0.0);
         chart.getStyler().setMarkerSize(6);
+        chart.getStyler().setChartBackgroundColor(Color.WHITE);
+        chart.getStyler().setPlotBackgroundColor(Color.WHITE);
 
         List<Double> xData = new ArrayList<>();
         List<Double> yData = new ArrayList<>();

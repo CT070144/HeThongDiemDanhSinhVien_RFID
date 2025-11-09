@@ -1,12 +1,17 @@
 package com.rfid.desktop.view;
 
+import com.rfid.desktop.model.AttendanceRecord;
 import com.rfid.desktop.model.LopHocPhan;
 import com.rfid.desktop.model.PagedResult;
 import com.rfid.desktop.model.Student;
 import com.rfid.desktop.service.ApplicationContext;
+import com.rfid.desktop.service.AttendanceService;
 import com.rfid.desktop.service.LopHocPhanService;
 import com.rfid.desktop.service.StudentService;
 import com.rfid.desktop.view.components.PaginationPanel;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -33,9 +38,13 @@ import java.awt.Frame;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public class ClassManagementPanel extends javax.swing.JPanel {
 
@@ -43,6 +52,7 @@ public class ClassManagementPanel extends javax.swing.JPanel {
 
     private final LopHocPhanService lopHocPhanService;
     private final StudentService studentService;
+    private final AttendanceService attendanceService;
 
     private final JTextField txtSearch = new JTextField();
     private final JButton btnSearch = new JButton("Tìm kiếm");
@@ -50,7 +60,7 @@ public class ClassManagementPanel extends javax.swing.JPanel {
     private final JButton btnCreate = new JButton("Thêm lớp");
     private final JButton btnEdit = new JButton("Sửa");
     private final JButton btnDelete = new JButton("Xóa");
-    private final JButton btnViewStudents = new JButton("Sinh viên");
+    private final JButton btnViewStudents = new JButton("Danh sách sinh viên");
     private final JLabel lblStatus = new JLabel(" ");
 
     private final JTable table = new JTable();
@@ -64,6 +74,7 @@ public class ClassManagementPanel extends javax.swing.JPanel {
     public ClassManagementPanel(ApplicationContext context) {
         this.lopHocPhanService = context.getLopHocPhanService();
         this.studentService = context.getStudentService();
+        this.attendanceService = context.getAttendanceService();
 
         initComponents();
         configureComponents();
@@ -479,7 +490,7 @@ public class ClassManagementPanel extends javax.swing.JPanel {
             add(scroll, BorderLayout.CENTER);
             add(studentPagination, BorderLayout.SOUTH);
 
-            JButton btnExport = new JButton("Xuất Excel");
+            JButton btnExport = new JButton("Xuất file điểm danh");
             btnExport.addActionListener(e -> exportStudents());
             add(btnExport, BorderLayout.NORTH);
 
@@ -511,43 +522,184 @@ public class ClassManagementPanel extends javax.swing.JPanel {
                 return;
             }
 
+            // Show file chooser first (on EDT)
             JFileChooser chooser = new JFileChooser();
-            chooser.setSelectedFile(new File("DanhSachSinhVien_" + lopHocPhan.getMaLopHocPhan() + ".xlsx"));
+            String defaultFileName = "BangDiemDanh_" + lopHocPhan.getMaLopHocPhan() + "_" + 
+                    LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd")) + ".xlsx";
+            chooser.setSelectedFile(new File(defaultFileName));
             if (chooser.showSaveDialog(this) != JFileChooser.APPROVE_OPTION) {
                 return;
             }
+            File selectedFile = chooser.getSelectedFile();
+
+            // Show progress dialog
+            JDialog progressDialog = new JDialog((Frame) SwingUtilities.getWindowAncestor(this), "Đang xuất file", true);
+            progressDialog.setLayout(new BorderLayout(10, 10));
+            progressDialog.add(new JLabel("Đang tải dữ liệu điểm danh..."), BorderLayout.CENTER);
+            progressDialog.setSize(300, 100);
+            progressDialog.setLocationRelativeTo(this);
+
+            new SwingWorker<Void, Void>() {
+                private Exception error;
+
+                @Override
+                protected Void doInBackground() {
+                    try {
+                        // 1) Fetch sessions (ca, ngay) for this class
+                        List<Map<String, Object>> sessions = ClassManagementPanel.this.lopHocPhanService.getSessions(lopHocPhan.getTenLopHocPhan());
+                        if (sessions.isEmpty()) {
+                            error = new IOException("Chưa có lịch học trong ca_hoc cho lớp này");
+                            return null;
+                        }
+
+                        // 2) Fetch all attendance records
+                        List<AttendanceRecord> allAttendance = ClassManagementPanel.this.attendanceService.getAll();
+                        
+                        // 3) Filter attendance for students in this class
+                        List<String> studentIds = students.stream()
+                                .map(Student::getMaSinhVien)
+                                .collect(Collectors.toList());
+                        List<AttendanceRecord> attendance = allAttendance.stream()
+                                .filter(r -> studentIds.contains(r.getMaSinhVien()))
+                                .collect(Collectors.toList());
+
+                        // 4) Create attendance index by maSinhVien|ngay|ca
+                        Map<String, AttendanceRecord> attendanceIndex = new HashMap<>();
+                        for (AttendanceRecord record : attendance) {
+                            if (record.getMaSinhVien() != null && record.getNgay() != null && record.getCa() != null) {
+                                String key = record.getMaSinhVien() + "|" + record.getNgay() + "|" + record.getCa();
+                                attendanceIndex.put(key, record);
+                            }
+                        }
+
+                        // 5) Export to Excel
 
             try (XSSFWorkbook workbook = new XSSFWorkbook()) {
-                Sheet sheet = workbook.createSheet("Students");
+                            Sheet sheet = workbook.createSheet(lopHocPhan.getMaLopHocPhan());
+
+                            // Create header style
+                            CellStyle headerStyle = workbook.createCellStyle();
+                            headerStyle.setAlignment(HorizontalAlignment.CENTER);
+                            org.apache.poi.ss.usermodel.Font headerFont = workbook.createFont();
+                            headerFont.setBold(true);
+                            headerStyle.setFont(headerFont);
+
+                            // Build headers: STT, Mã SV, Tên SV, then one column per session, and summary
                 int rowIndex = 0;
-                Row header = sheet.createRow(rowIndex++);
-                header.createCell(0).setCellValue("Mã sinh viên");
-                header.createCell(1).setCellValue("Tên sinh viên");
-                header.createCell(2).setCellValue("RFID");
-                header.createCell(3).setCellValue("Ngày tạo");
+                            Row headerRow = sheet.createRow(rowIndex++);
+                            headerRow.createCell(0).setCellValue("STT");
+                            headerRow.createCell(1).setCellValue("Mã sinh viên");
+                            headerRow.createCell(2).setCellValue("Tên sinh viên");
 
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
+                            int colIndex = 3;
+                            for (Map<String, Object> session : sessions) {
+                                LocalDate ngayHoc = (LocalDate) session.get("ngayHoc");
+                                Integer ca = (Integer) session.get("ca");
+                                String sessionHeader = ngayHoc != null ? dateFormatter.format(ngayHoc) : "";
+                                if (ca != null) {
+                                    sessionHeader += " - Ca " + ca;
+                                }
+                                headerRow.createCell(colIndex++).setCellValue(sessionHeader);
+                            }
+                            headerRow.createCell(colIndex++).setCellValue("Tổng muộn");
+                            headerRow.createCell(colIndex++).setCellValue("Tổng vắng");
+                            headerRow.createCell(colIndex).setCellValue("Tổng tham gia");
 
-                for (Student student : students) {
-                    Row row = sheet.createRow(rowIndex++);
-                    row.createCell(0).setCellValue(student.getMaSinhVien());
-                    row.createCell(1).setCellValue(student.getTenSinhVien());
-                    row.createCell(2).setCellValue(student.getRfid());
-                    row.createCell(3).setCellValue(student.getCreatedAt() != null ? formatter.format(student.getCreatedAt()) : "");
-                }
+                            // Apply header style
+                            for (int i = 0; i <= colIndex; i++) {
+                                Cell cell = headerRow.getCell(i);
+                                if (cell != null) {
+                                    cell.setCellStyle(headerStyle);
+                                }
+                            }
 
-                for (int i = 0; i < 4; i++) {
-                    sheet.autoSizeColumn(i);
-                }
+                            // Build data rows
+                            for (int idx = 0; idx < students.size(); idx++) {
+                                Student student = students.get(idx);
+                                Row row = sheet.createRow(rowIndex++);
+                                row.createCell(0).setCellValue(idx + 1);
+                                row.createCell(1).setCellValue(student.getMaSinhVien());
+                                row.createCell(2).setCellValue(student.getTenSinhVien());
 
-                try (FileOutputStream fos = new FileOutputStream(chooser.getSelectedFile())) {
+                                int participated = 0;
+                                int lateCount = 0;
+                                int absentCount = 0;
+                                colIndex = 3;
+
+                                for (Map<String, Object> session : sessions) {
+                                    LocalDate ngayHoc = (LocalDate) session.get("ngayHoc");
+                                    Integer ca = (Integer) session.get("ca");
+                                    
+                                    String cellValue = "v"; // vắng (mặc định)
+                                    
+                                    if (ngayHoc != null && ca != null) {
+                                        String key = student.getMaSinhVien() + "|" + ngayHoc + "|" + ca;
+                                        AttendanceRecord record = attendanceIndex.get(key);
+                                        
+                                        if (record != null) {
+                                            String tinhTrang = record.getTinhTrangDiemDanh();
+                                            if ("muon".equalsIgnoreCase(tinhTrang) || "MUON".equalsIgnoreCase(tinhTrang)) {
+                                                cellValue = "M";
+                                                participated++;
+                                                lateCount++;
+                                            } else {
+                                                cellValue = "x";
+                                                participated++;
+                                            }
+                                        } else {
+                                            absentCount++;
+                                        }
+                                    } else {
+                                        // Session không có ngày hoặc ca, tính là vắng
+                                        absentCount++;
+                                    }
+                                    row.createCell(colIndex++).setCellValue(cellValue);
+                                }
+                                row.createCell(colIndex++).setCellValue(lateCount);
+                                row.createCell(colIndex++).setCellValue(absentCount);
+                                row.createCell(colIndex).setCellValue(participated);
+                            }
+
+                            // Set column widths
+                            sheet.setColumnWidth(0, 5 * 256);  // STT
+                            sheet.setColumnWidth(1, 15 * 256); // Mã SV
+                            sheet.setColumnWidth(2, 28 * 256); // Tên SV
+                            for (int i = 3; i < 3 + sessions.size(); i++) {
+                                sheet.setColumnWidth(i, 20 * 256); // Session columns
+                            }
+                            sheet.setColumnWidth(3 + sessions.size(), 12 * 256);     // Tổng muộn
+                            sheet.setColumnWidth(4 + sessions.size(), 12 * 256);     // Tổng vắng
+                            sheet.setColumnWidth(5 + sessions.size(), 14 * 256);     // Tổng tham gia
+
+                            try (FileOutputStream fos = new FileOutputStream(selectedFile)) {
                     workbook.write(fos);
+                            }
+                        }
+                    } catch (Exception ex) {
+                        error = ex;
+                    }
+                    return null;
                 }
 
-                JOptionPane.showMessageDialog(this, "Đã xuất danh sách sinh viên", "Thành công", JOptionPane.INFORMATION_MESSAGE);
-            } catch (IOException ex) {
-                JOptionPane.showMessageDialog(this, "Lỗi: " + ex.getMessage(), "Thất bại", JOptionPane.ERROR_MESSAGE);
-            }
+                @Override
+                protected void done() {
+                    progressDialog.dispose();
+                    if (error != null) {
+                        JOptionPane.showMessageDialog(StudentListDialog.this,
+                                "Lỗi: " + error.getMessage(),
+                                "Thất bại",
+                                JOptionPane.ERROR_MESSAGE);
+                    } else {
+                        JOptionPane.showMessageDialog(StudentListDialog.this,
+                                "Đã xuất file điểm danh thành công",
+                                "Thành công",
+                                JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
+            }.execute();
+
+            progressDialog.setVisible(true);
         }
     }
 

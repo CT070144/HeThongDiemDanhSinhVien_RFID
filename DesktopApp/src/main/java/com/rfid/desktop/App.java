@@ -5,10 +5,6 @@ import com.rfid.desktop.view.MainFrame;
 
 import javax.swing.SwingUtilities;
 
-/**
- * Application entry point for the RFID desktop client. This class initialises the
- * look and feel and launches the main Swing frame.
- */
 public final class App {
 
     private App() {

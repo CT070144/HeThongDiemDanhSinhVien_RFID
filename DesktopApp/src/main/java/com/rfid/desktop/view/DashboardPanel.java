@@ -112,6 +112,8 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
 
     private void reloadData() {
         setLoadingState(true);
+        // Show loading state for charts immediately
+        showLoadingCharts();
 
         SwingWorker<DashboardData, Void> worker = new SwingWorker<>() {
             private Exception error;
@@ -147,6 +149,7 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
                 try {
                     DashboardData data = get();
                     if (data == null) {
+                        showPlaceholderCharts();
                         return;
                     }
 
@@ -171,6 +174,7 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
                         updateCharts(allAttendance);
                     }
                 } catch (Exception ignored) {
+                    showPlaceholderCharts();
                 }
             }
         };
@@ -275,6 +279,12 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
         showPlaceholder(pnlChartByShift, "Không có dữ liệu");
         showPlaceholder(pnlChartStatus, "Không có dữ liệu");
         showPlaceholder(pnlChartHourly, "Không có dữ liệu");
+    }
+    
+    private void showLoadingCharts() {
+        showPlaceholder(pnlChartByShift, "Đang tải dữ liệu...");
+        showPlaceholder(pnlChartStatus, "Đang tải dữ liệu...");
+        showPlaceholder(pnlChartHourly, "Đang tải dữ liệu...");
     }
 
     private void showPlaceholder(JPanel container, String message) {
@@ -389,6 +399,7 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
         tblTodayAttendance = new javax.swing.JTable();
 
         setBackground(new java.awt.Color(250, 250, 252));
+        setBorder(new javax.swing.border.EmptyBorder(10, 10, 10, 10));
 
         headerPanel.setOpaque(false);
 
@@ -551,7 +562,10 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
         pnlChartByShift.setBorder(javax.swing.BorderFactory.createTitledBorder("Thống kê điểm danh theo ca học"));
         pnlChartStatus.setBorder(javax.swing.BorderFactory.createTitledBorder("Phân bố trạng thái điểm danh"));
         pnlChartHourly.setBorder(javax.swing.BorderFactory.createTitledBorder("Xu hướng điểm danh theo giờ"));
-
+        
+        pnlChartByShift.setBackground(Color.WHITE);
+        pnlChartStatus.setBackground(Color.WHITE);
+        pnlChartHourly.setBackground(Color.WHITE);
         javax.swing.GroupLayout chartsContainerLayout = new javax.swing.GroupLayout(chartsContainer);
         chartsContainer.setLayout(chartsContainerLayout);
         chartsContainerLayout.setHorizontalGroup(
@@ -574,17 +588,18 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
         tableContainer.setBorder(javax.swing.BorderFactory.createTitledBorder("Điểm danh hôm nay"));
 
         scrollToday.setViewportView(tblTodayAttendance);
+        scrollToday.setPreferredSize(new java.awt.Dimension(400, 220));
 
         javax.swing.GroupLayout tableContainerLayout = new javax.swing.GroupLayout(tableContainer);
         tableContainer.setLayout(tableContainerLayout);
         tableContainerLayout.setHorizontalGroup(
             tableContainerLayout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                .addComponent(scrollToday, javax.swing.GroupLayout.DEFAULT_SIZE, 400, Short.MAX_VALUE)
+                .addComponent(scrollToday, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                 .addComponent(paginationPanel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
         );
         tableContainerLayout.setVerticalGroup(
             tableContainerLayout.createSequentialGroup()
-                .addComponent(scrollToday, javax.swing.GroupLayout.DEFAULT_SIZE, 220, Short.MAX_VALUE)
+                .addComponent(scrollToday, javax.swing.GroupLayout.PREFERRED_SIZE, 220, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(paginationPanel, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
         );
@@ -606,7 +621,7 @@ public class DashboardPanel extends javax.swing.JPanel implements WebSocketServi
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                 .addComponent(chartsContainer, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                .addComponent(tableContainer, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(tableContainer, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
         );
     }
 

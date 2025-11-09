@@ -130,8 +130,8 @@ public class LopHocPhanService {
         LopHocPhan lopHocPhan = lopHocPhanRepository.findByMaLopHocPhan(maLopHocPhan)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy lớp học phần với mã: " + maLopHocPhan));
         
-        lopHocPhan.setTenLopHocPhan(lopHocPhanDetails.getTenLopHocPhan());
-        return lopHocPhanRepository.save(lopHocPhan);
+
+        return lopHocPhanRepository.save(lopHocPhanDetails);
     }
     
     public void deleteLopHocPhan(String maLopHocPhan) {

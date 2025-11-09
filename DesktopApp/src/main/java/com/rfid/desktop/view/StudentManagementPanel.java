@@ -302,13 +302,16 @@ public class StudentManagementPanel extends JPanel {
             protected void done() {
                 if (error != null) {
                     setStatus("Lỗi: " + error.getMessage());
+                    updateFilteredStudents(List.of());
                     return;
                 }
                 try {
-                    allStudents = get();
+                    List<Student> students = get();
+                    allStudents = students != null ? students : List.of();
                     applyFilters();
                 } catch (Exception e) {
                     setStatus("Lỗi: " + e.getMessage());
+                    updateFilteredStudents(List.of());
                 }
             }
         }.execute();
@@ -326,7 +329,7 @@ public class StudentManagementPanel extends JPanel {
                         student.getTenSinhVien().toLowerCase().contains(keyword))
                 .collect(Collectors.toList());
 
-        
+        updateFilteredStudents(filtered);
     }
 
     private void deleteSelectedStudent() {
