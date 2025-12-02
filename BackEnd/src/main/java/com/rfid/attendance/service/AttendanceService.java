@@ -201,7 +201,7 @@ public class AttendanceService {
             return 4;
         }
         // Ca 5: 18h - 20h30 (có thể điểm danh từ 17h50 - 20h40)
-        else if (currentTime.isAfter(LocalTime.of(17, 50)) && currentTime.isBefore(LocalTime.of(20, 40))) {
+        else if (currentTime.isAfter(LocalTime.of(17, 50)) && currentTime.isBefore(LocalTime.of(23, 40))) {
             return 5;
         }
         else {

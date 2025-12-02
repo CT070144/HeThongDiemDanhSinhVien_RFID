@@ -1,14 +1,16 @@
 import React from 'react';
-import { Navbar, Nav, Container, Dropdown } from 'react-bootstrap';
+import { Navbar, Nav, Container, Dropdown, Badge } from 'react-bootstrap';
 import { LinkContainer } from 'react-router-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import logo from '../assets/logo.png';
+import { FaHome, FaUsers, FaGraduationCap, FaHistory, FaCog, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
 
 const CustomNavbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogout = () => {
     logout();
@@ -16,64 +18,148 @@ const CustomNavbar = () => {
     navigate('/login');
   };
 
+  const isActive = (path) => location.pathname === path;
+
   return (
-    <Navbar bg="dark" variant="dark" expand="lg">
-      <Container>
-        
+    <Navbar bg="primary" variant="dark" expand="lg" className="shadow-sm" style={{ borderBottom: '3px solid #0a58ca' }}>
+      <Container fluid>
         <LinkContainer to="/dashboard">
-          <Navbar.Brand>
+          <Navbar.Brand className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
             <img
               src={logo}
-              width="72"
-              height="72"
-              style={{ marginRight: '10px',borderRadius: '40px' }}
+              width="60"
+              height="60"
+              style={{ marginRight: '15px', borderRadius: '50%', border: '3px solid rgba(255,255,255,0.3)' }}
               className="d-inline-block align-top"
               alt="Logo"
             />
-            <span style={{ fontSize: '24px', lineHeight: '72px' }}>Hệ thống điểm danh RFID</span>
+            <div className="d-flex flex-column">
+              <span style={{ fontSize: '20px', fontWeight: '600', lineHeight: '1.2' }}>Hệ thống điểm danh RFID</span>
+              <small style={{ fontSize: '12px', opacity: 0.8, textAlign: 'left'}}>Học viện Kỹ thuật Mật mã</small>
+            </div>
           </Navbar.Brand>
         </LinkContainer>
 
-        <Navbar.Toggle aria-controls="basic-navbar-nav" />
+        <Navbar.Toggle aria-controls="basic-navbar-nav" style={{ borderColor: 'rgba(255,255,255,0.5)' }} />
         <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto">
+          <Nav className="me-auto" style={{ gap: '5px' }}>
             <LinkContainer to="/dashboard">
-              <Nav.Link>Dashboard</Nav.Link>
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/dashboard') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/dashboard') ? '600' : '400',
+                  backgroundColor: isActive('/dashboard') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaHome className="me-2" />
+                Dashboard
+              </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/students">
-              <Nav.Link>Sinh viên</Nav.Link>
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/students') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/students') ? '600' : '400',
+                  backgroundColor: isActive('/students') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaUsers className="me-2" />
+                Sinh viên
+              </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/lophocphan">
-              <Nav.Link>Lớp học phần</Nav.Link>
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/lophocphan') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/lophocphan') ? '600' : '400',
+                  backgroundColor: isActive('/lophocphan') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaGraduationCap className="me-2" />
+                Lớp học phần
+              </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/attendance">
-              <Nav.Link>Lịch sử điểm danh</Nav.Link>
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/attendance') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/attendance') ? '600' : '400',
+                  backgroundColor: isActive('/attendance') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaHistory className="me-2" />
+                Lịch sử điểm danh
+              </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/rfid-reader">
-              <Nav.Link>Thiết lập RFID</Nav.Link>
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/rfid-reader') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/rfid-reader') ? '600' : '400',
+                  backgroundColor: isActive('/rfid-reader') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaCog className="me-2" />
+                Thiết lập RFID
+              </Nav.Link>
             </LinkContainer>
           </Nav>
           
           {/* User info and logout */}
           <Nav>
             <Dropdown align="end">
-              <Dropdown.Toggle variant="outline-light" id="dropdown-basic">
-                <i className="fas fa-user-circle me-2"></i>
+              <Dropdown.Toggle 
+                variant="outline-light" 
+                id="dropdown-basic"
+                className="d-flex align-items-center shadow-sm"
+                style={{ 
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderRadius: '0.5rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: '500'
+                }}
+              >
+                <FaUserCircle className="me-2" size={20} />
                 {user?.fullName || user?.username}
               </Dropdown.Toggle>
 
-              <Dropdown.Menu>
-                <Dropdown.Header>
-                  <div className="text-center">
+              <Dropdown.Menu className="shadow-lg" style={{ border: 'none', borderRadius: '0.5rem', marginTop: '10px' }}>
+                <Dropdown.Header className="bg-light">
+                  <div className="text-center p-2">
+                    <FaUserCircle size={48} className="text-primary mb-2" />
                     <div className="fw-bold">{user?.fullName}</div>
-                    <small className="text-muted">{user?.username}</small>
-                    <br />
-                    <span className="badge bg-primary">{user?.roleDescription}</span>
+                    <small className="text-muted d-block">{user?.username}</small>
+                    <Badge bg="primary" className="mt-2" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>
+                      {user?.roleDescription}
+                    </Badge>
                   </div>
                 </Dropdown.Header>
                 <Dropdown.Divider />
-                <Dropdown.Item onClick={handleLogout}>
-                  <i className="fas fa-sign-out-alt me-2"></i>
+                <Dropdown.Item 
+                  onClick={handleLogout}
+                  className="d-flex align-items-center"
+                  style={{ 
+                    color: '#dc3545',
+                    fontWeight: '500',
+                    padding: '0.75rem 1.25rem'
+                  }}
+                >
+                  <FaSignOutAlt className="me-2" />
                   Đăng xuất
                 </Dropdown.Item>
               </Dropdown.Menu>

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import Login from './pages/Login';
 import StudentManagement from './pages/StudentManagement';
 import AttendanceHistory from './pages/AttendanceHistory';
@@ -49,9 +50,9 @@ function AppContent() {
   const { isAuthenticated } = useAuth();
   
   return (
-    <div className="App">
+    <div className="App d-flex flex-column" style={{ minHeight: '100vh' }}>
       {isAuthenticated() && <Navbar />}
-      <div className={isAuthenticated() ? "container-fluid" : ""}>
+      <div className={isAuthenticated() ? "container-fluid flex-grow-1" : ""} style={{ flex: 1 }}>
         <Routes>
           <Route path="/login" element={
             <PublicRoute>
@@ -86,6 +87,7 @@ function AppContent() {
           } />
         </Routes>
       </div>
+      {isAuthenticated() && <Footer />}
       <ToastContainer
         position="top-right"
         autoClose={3000}

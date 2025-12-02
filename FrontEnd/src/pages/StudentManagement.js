@@ -4,6 +4,7 @@ import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI } from '../services/api';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
+import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode } from 'react-icons/fa';
 
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
@@ -407,7 +408,7 @@ const StudentManagement = () => {
   };
 
   return (
-    <Container>
+    <Container className="py-4" >
       <style>{`
         @keyframes sweep {
           0% { left: -40%; }
@@ -431,85 +432,134 @@ const StudentManagement = () => {
       `}</style>
       <Row>
         <Col>
-          <Card>
-            <Card.Header>
-              <h3>Sinh viên</h3>
-           
+          <Card className="shadow-sm" style={{ border: 'none' }}>
+            <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
+              <h3 className="mb-0 d-flex align-items-center">
+                <FaUsers className="me-2" />
+                SINH VIÊN
+              </h3>
+              <div>
+                <Button 
+                  variant="light" 
+                  onClick={() => setShowImportModal(true)}
+                  className="me-2 shadow-sm"
+                >
+                  <FaUpload className="me-2" />
+                  Cập nhật RFID
+                </Button>
+                <Button variant="light" onClick={handleAddNew} className="shadow-sm">
+                  <FaPlus className="me-2" />
+                  Thêm mới
+                </Button>
+              </div>
             </Card.Header>
-            <Card.Body>
-            
-
+            <Card.Body className="p-4">
               {selectedLopHocPhan && (
-                <Row className="mb-3">
-                  <Col>
-                    <Alert variant="info">
-                   <Badge bg="primary">
-                        {lopHocPhans.find(l => l.maLopHocPhan === selectedLopHocPhan)?.tenLopHocPhan}
-                      </Badge>
-                    </Alert>
-                  </Col>
-                </Row>
-              )}
-
-              <Table responsive striped bordered hover>
-                <thead>
-                  <tr>
-                    <th style={{textAlign:'left'}}>Mã sinh viên</th>
-                    <th style={{textAlign:'left'}}>RFID</th>
-                    <th style={{textAlign:'left'}}>Tên sinh viên</th>
-                    <th style={{textAlign:'left'}}>Ngày tạo</th>
-                    <th style={{textAlign:'left'}}>Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredStudents
-                    .slice((page - 1) * pageSize, page * pageSize)
-                    .map((student) => (
-                    <tr key={student.maSinhVien}>
-                      <td style={{textAlign:'left'}}>
-                        <Badge bg="primary">{student.maSinhVien}</Badge>
-                      </td>
-                      <td style={{textAlign:'left'}}>
-                        <Badge bg="info">{student.rfid}</Badge>
-                      </td>
-                      <td style={{textAlign:'left'}}>{student.tenSinhVien}</td>
-                      <td style={{textAlign:'left'}}>{new Date(student.createdAt).toLocaleDateString('vi-VN')}</td>
-                      <td>
-                        <Button
-                          variant="warning"
-                          size="sm"
-                          onClick={() => handleEdit(student)}
-                          className="me-2"
-                        >
-                          Sửa
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          onClick={() => handleDelete(student.maSinhVien)}
-                        >
-                          Xóa
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </Table>
-
-              {filteredStudents.length === 0 && (
-                <Alert variant="info">
-                  Không có sinh viên nào được tìm thấy.
+                <Alert variant="info" className="mb-4 shadow-sm" style={{ border: '1px solid #0dcaf0' }}>
+                  <Badge bg="primary" className="me-2">
+                    {lopHocPhans.find(l => l.maLopHocPhan === selectedLopHocPhan)?.tenLopHocPhan}
+                  </Badge>
                 </Alert>
               )}
 
+              {/* Search Form */}
+              <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                <Card.Body className="p-3">
+                  <Form.Group className="mb-0">
+                    <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                      <FaSearch className="me-2 text-primary" />
+                      Tìm kiếm
+                    </Form.Label>
+                    <Form.Control
+                      type="text"
+                      placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
+                      value={searchKeyword}
+                      onChange={(e) => setSearchKeyword(e.target.value)}
+                      className="shadow-sm"
+                      style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                    />
+                  </Form.Group>
+                </Card.Body>
+              </Card>
+
+              {/* Table */}
+              <div className="table-responsive">
+                <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                  <thead className="table-primary">
+                    <tr>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Mã sinh viên</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>RFID</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Tên sinh viên</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Ngày tạo</th>
+                      <th style={{textAlign:'center', fontWeight: '600'}}>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredStudents
+                      .slice((page - 1) * pageSize, page * pageSize)
+                      .map((student) => (
+                      <tr key={student.maSinhVien} style={{ verticalAlign: 'middle' }}>
+                        <td style={{textAlign:'left'}}>
+                          <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                            {student.maSinhVien}
+                          </Badge>
+                        </td>
+                        <td style={{textAlign:'left'}}>
+                          <Badge bg="info" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                            <FaQrcode className="me-1" />
+                            {student.rfid}
+                          </Badge>
+                        </td>
+                        <td style={{textAlign:'left', fontWeight: '500'}}>{student.tenSinhVien}</td>
+                        <td style={{textAlign:'left'}}>{new Date(student.createdAt).toLocaleDateString('vi-VN')}</td>
+                        <td style={{textAlign:'center'}}>
+                          <div className="d-flex gap-2 justify-content-center">
+                            <Button
+                              variant="warning"
+                              size="sm"
+                              onClick={() => handleEdit(student)}
+                              className="shadow-sm"
+                            >
+                              <FaEdit className="me-1" />
+                              Sửa
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={() => handleDelete(student.maSinhVien)}
+                              className="shadow-sm"
+                            >
+                              <FaTrash className="me-1" />
+                              Xóa
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
+
+              {filteredStudents.length === 0 && (
+                <div className="text-center py-5">
+                  <FaUsers size={64} className="text-muted mb-3" />
+                  <Alert variant="info" className="d-inline-block">
+                    Không có sinh viên nào được tìm thấy.
+                  </Alert>
+                </div>
+              )}
+
               {filteredStudents.length > 0 && (
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <div>Trang {page}</div>
+                <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                  <div className="text-muted fw-semibold">
+                    Trang <span className="text-primary">{page}</span>
+                  </div>
                   <div className="d-flex gap-2">
                     <Button
                       variant="outline-secondary"
                       disabled={page === 1}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      className="shadow-sm"
                     >
                       Trước
                     </Button>
@@ -517,57 +567,33 @@ const StudentManagement = () => {
                       variant="outline-secondary"
                       disabled={filteredStudents.length <= page * pageSize}
                       onClick={() => setPage((p) => p + 1)}
+                      className="shadow-sm"
                     >
                       Sau
                     </Button>
                   </div>
                 </div>
               )}
-                <Row className="mb-3" style={{ marginTop: '10px' }}>
-                <Col md={8}>
-                  <Form.Control
-                    type="text"
-                    placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
-                    value={searchKeyword}
-                    onChange={(e) => setSearchKeyword(e.target.value)}
-                  />
-                </Col>
-               
-                <Col md={4} className="text-end">
-                  <Button 
-                    variant="success" 
-                    onClick={() => setShowImportModal(true)}
-                    className="me-2"
-                  >
-                   Cập nhật RFID
-                  </Button>
-                  <Button variant="primary" onClick={handleAddNew}>
-                    Thêm mới
-                  </Button>
-                </Col>
-              </Row>
             </Card.Body>
           </Card>
         </Col>
       </Row>
 
       {/* Modal thêm/sửa sinh viên */}
-      <Modal show={showModal} onHide={handleCloseModal}>
-        <Modal.Header closeButton>
-          <Modal.Title>
-            {editingStudent ? (
-              <>
-                Sửa sinh viên
-              </>
-            ) : (
-              'Thêm sinh viên mới'
-            )}
+      <Modal show={showModal} onHide={handleCloseModal} size="lg">
+        <Modal.Header closeButton className="bg-primary text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FaUsers className="me-2" />
+            {editingStudent ? 'Sửa sinh viên' : 'Thêm sinh viên mới'}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleSubmit}>
           <Modal.Body>
             <Form.Group className="mb-3">
-              <Form.Label>Mã sinh viên</Form.Label>
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaIdCard className="me-2 text-primary" />
+                Mã sinh viên
+              </Form.Label>
               <Form.Control
                 type="text"
                 name="maSinhVien"
@@ -576,11 +602,15 @@ const StudentManagement = () => {
                 required
                 disabled={editingStudent ? true : false}
                 placeholder="Nhập mã sinh viên (VD: CT070201)"
+                className="shadow-sm"
+                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
-              
             </Form.Group>
             <Form.Group className="mb-3">
-  <Form.Label>RFID</Form.Label>
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaQrcode className="me-2 text-primary" />
+                RFID
+              </Form.Label>
 
   {/* Gom input và nút vào cùng 1 hàng */}
   <div className="d-flex align-items-center gap-2">
@@ -699,7 +729,10 @@ const StudentManagement = () => {
 </Form.Group>
 
 <Form.Group className="mb-3">
-              <Form.Label>Tên sinh viên</Form.Label>
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaUsers className="me-2 text-primary" />
+                Tên sinh viên
+              </Form.Label>
               <Form.Control
                 type="text"
                 name="tenSinhVien"
@@ -707,6 +740,8 @@ const StudentManagement = () => {
                 onChange={handleInputChange}
                 required
                 placeholder="Nhập họ và tên sinh viên"
+                className="shadow-sm"
+                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
             </Form.Group>
           </Modal.Body>
@@ -730,8 +765,11 @@ const StudentManagement = () => {
 
       {/* Modal import Excel */}
       <Modal show={showImportModal} onHide={handleCloseImportModal} size="lg">
-        <Modal.Header closeButton>
-          <Modal.Title>Import cập nhật RFID từ Excel</Modal.Title>
+        <Modal.Header closeButton className="bg-success text-white">
+          <Modal.Title className="d-flex align-items-center">
+            <FaUpload className="me-2" />
+            Import cập nhật RFID từ Excel
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Alert variant="info">

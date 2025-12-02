@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import { exportClassAttendanceMatrix } from '../services/exportExcel';
 import api from '../services/api';
-import { FaFileDownload } from "react-icons/fa";
+import { FaFileDownload, FaPlus, FaUpload, FaSearch, FaSync, FaEdit, FaTrash, FaGraduationCap } from "react-icons/fa";
 
 const LopHocPhanManagement = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
@@ -308,6 +308,59 @@ const LopHocPhanManagement = () => {
     setCurrentPage(pageNumber);
   };
 
+  // Helper function to generate pagination items with ellipsis
+  const getPaginationItems = (currentPage, totalPages) => {
+    if (totalPages <= 1) {
+      return [0];
+    }
+    
+    const items = [];
+    const delta = 2; // Number of pages to show on each side of current page
+    
+    // If total pages is small, show all pages
+    if (totalPages <= 7) {
+      for (let i = 0; i < totalPages; i++) {
+        items.push(i);
+      }
+      return items;
+    }
+    
+    // Always show first page
+    items.push(0);
+    
+    // Calculate start and end of page range around current page
+    let start = Math.max(1, currentPage - delta);
+    let end = Math.min(totalPages - 2, currentPage + delta);
+    
+    // Add ellipsis after first page if there's a gap
+    if (start > 2) {
+      items.push('ellipsis-start');
+    } else if (start === 2) {
+      // If start is 2, show page 1 instead of ellipsis
+      items.push(1);
+    }
+    
+    // Add pages in range (skip if already added)
+    for (let i = start; i <= end; i++) {
+      if (i !== 0 && i !== totalPages - 1 && !items.includes(i)) {
+        items.push(i);
+      }
+    }
+    
+    // Add ellipsis before last page if there's a gap
+    if (end < totalPages - 3) {
+      items.push('ellipsis-end');
+    } else if (end === totalPages - 3 && !items.includes(totalPages - 2)) {
+      // If end is totalPages - 3, show page totalPages - 2 instead of ellipsis
+      items.push(totalPages - 2);
+    }
+    
+    // Always show last page
+    items.push(totalPages - 1);
+    
+    return items;
+  };
+
   // Export functions
   const exportStudentsToExcel = (lopHocPhan) => {
     if (!sinhViens || sinhViens.length === 0) {
@@ -528,145 +581,199 @@ const LopHocPhanManagement = () => {
     <Container fluid className="py-4">
       <Row>
         <Col>
-          <Card>
-            <Card.Header className="d-flex justify-content-between align-items-center">
-              <h4 className="mb-0">Lớp học phần</h4>
+          <Card className="shadow-sm" style={{ border: 'none' }}>
+            <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
+              <h4 className="mb-0 d-flex align-items-center">
+                <FaGraduationCap className="me-2" />
+                Lớp học phần
+              </h4>
               <div>
-                <Button variant="primary" onClick={handleCreate} className="me-2">
+                <Button variant="light" onClick={handleCreate} className="me-2 shadow-sm">
+                  <FaPlus className="me-2" />
                   Thêm lớp học phần
                 </Button>
                 <Button 
-                  variant="secondary" 
-                  className="ms-2"
+                  variant="light" 
+                  className="shadow-sm"
                   onClick={() => setShowCaHocImportModal(true)}
                 >
+                  <FaUpload className="me-2" />
                   Import TKB
                 </Button>
               </div>
             </Card.Header>
-            <Card.Body>
+            <Card.Body className="p-4">
               {/* Search Form */}
-              <Form onSubmit={handleSearch} className="mb-3">
-                <Row>
-                  <Col md={8}>
-                    <Form.Control
-                      type="text"
-                      placeholder="Tìm kiếm theo mã lớp học phần hoặc tên lớp..."
-                      value={searchKeyword}
-                      onChange={(e) => setSearchKeyword(e.target.value)}
-                    />
-                  </Col>
-                  <Col md={4}>
-                    <Button type="submit" variant="outline-primary">
-                      Tìm kiếm
-                    </Button>
-                    <Button 
-                      type="button" 
-                      variant="outline-secondary" 
-                      className="ms-2"
-                      onClick={() => {
-                        setSearchKeyword('');
-                        setLhpPage(0);
-                        fetchLopHocPhans();
-                      }}
-                    >
-                      Làm mới
-                    </Button>
-                  </Col>
-                </Row>
-              </Form>
+              <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                <Card.Body className="p-3">
+                  <Form onSubmit={handleSearch}>
+                    <Row className="g-3 align-items-end">
+                      <Col xs={12} md={8}>
+                        <Form.Group className="mb-0">
+                          <Form.Label  className="fw-semibold d-flex align-items-center mb-2">
+                            <FaSearch className="me-2 text-primary" />
+                            Tìm kiếm
+                          </Form.Label>
+                          <Form.Control
+                            type="text"
+                            placeholder="Tìm kiếm theo mã lớp học phần hoặc tên lớp..."
+                            value={searchKeyword}
+                            onChange={(e) => setSearchKeyword(e.target.value)}
+                            className="shadow-sm"
+                            style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                          />
+                        </Form.Group>
+                      </Col>
+                      <Col xs={12} md={4}>
+                        <div className="d-flex gap-2">
+                          <Button type="submit" variant="primary" style={{ position: 'relative', top: '-10px' }} className="flex-fill shadow-sm">
+                            <FaSearch className="me-2" />
+                            Tìm kiếm
+                          </Button>
+                          <Button 
+                            type="button" 
+                            variant="outline-secondary" 
+                            style={{ position: 'relative', top: '-10px' }}
+                            className="shadow-sm"
+                            onClick={() => {
+                              setSearchKeyword('');
+                              setLhpPage(0);
+                              fetchLopHocPhans();
+                            }}
+                          >
+                            <FaSync className="me-2" />
+                            Làm mới
+                          </Button>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Form>
+                </Card.Body>
+              </Card>
 
               {/* Lop Hoc Phan Table */}
               {loading ? (
-                <div className="text-center py-4">
-                  <Spinner animation="border" />
-                  <p className="mt-2">Đang tải...</p>
+                <div className="text-center py-5">
+                  <Spinner animation="border" variant="primary" />
+                  <p className="mt-3 text-muted">Đang tải dữ liệu...</p>
                 </div>
               ) : (
-                <Table responsive striped hover>
-                  <thead>
-                    <tr>
-                      <th style={{textAlign: 'left'}}>Mã lớp học phần</th>
-                      <th style={{textAlign: 'left'}}>Tên lớp học phần</th>
-                      <th style={{textAlign: 'left'} }>Giảng viên</th>
-                      <th style={{textAlign: 'left'}}>Hình thức học</th>
-                      <th style={{textAlign: 'left'}}>Phòng học</th>
-                      <th >Số sinh viên</th>
-                      <th>File điểm danh</th>
-                      <th>Hành động</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {lopHocPhans.map((lopHocPhan) => (
-                      <tr key={lopHocPhan.maLopHocPhan}>
-                        <td style={{textAlign: 'left'}}>
-                          <Badge bg="primary">{lopHocPhan.maLopHocPhan}</Badge>
-                        </td>
-                        
-                        <td style={{textAlign: 'left'}}>{lopHocPhan.tenLopHocPhan}</td>
-                        <td style={{textAlign: 'left'}}>{lopHocPhan.giangVien || '-'}</td>
-                        <td style={{textAlign: 'left'}}>{lopHocPhan.hinhThucHoc || '-'}</td>
-                        <td style={{textAlign: 'left'}}>{lopHocPhan.phongHoc || '-'}</td>
-                        <td>
-                          <Badge bg="info">
-                            {lopHocPhan.soSinhVien || 0} sinh viên
-                          </Badge>
-                        </td>
-                        <td>
-                            <FaFileDownload size={30} color="gray" style={{cursor: 'pointer'}} onClick={() => handleDownloadAttendanceMatrix(lopHocPhan)} />
-                        </td>
-                        <td>
-                          <Button
-                            variant="warning"
-                            size="sm"
-                            className="me-1"
-                            onClick={() => handleEdit(lopHocPhan)}
-                            style={{marginBottom: '5px'}}
-                          >
-                            Sửa
-                          </Button>
-                          <Button
-                            variant="danger"
-                            style={{marginBottom: '5px'}}
-                            size="sm"
-                            onClick={() => handleDelete(lopHocPhan.maLopHocPhan, lopHocPhan.tenLopHocPhan)}
-                          >
-                            Xóa
-                          </Button>
-                        </td>
+                <div className="table-responsive">
+                  <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                    <thead className="table-primary">
+                      <tr>
+                        <th style={{textAlign: 'left', fontWeight: '600'}}>Mã lớp học phần</th>
+                        <th style={{textAlign: 'left', fontWeight: '600'}}>Tên lớp học phần</th>
+                        <th style={{textAlign: 'left', fontWeight: '600'}}>Giảng viên</th>
+                        <th style={{textAlign: 'left', fontWeight: '600'}}>Hình thức học</th>
+                        <th style={{textAlign: 'left', fontWeight: '600'}}>Phòng học</th>
+                        <th style={{textAlign: 'center', fontWeight: '600'}}>Số sinh viên</th>
+                        <th style={{textAlign: 'center', fontWeight: '600'}}>File điểm danh</th>
+                        <th style={{textAlign: 'center', fontWeight: '600'}}>Hành động</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </Table>
+                    </thead>
+                    <tbody>
+                      {lopHocPhans.map((lopHocPhan) => (
+                        <tr key={lopHocPhan.maLopHocPhan} style={{ verticalAlign: 'middle' }}>
+                          <td style={{textAlign: 'left'}}>
+                            <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                              {lopHocPhan.maLopHocPhan}
+                            </Badge>
+                          </td>
+                          <td style={{textAlign: 'left', fontWeight: '500'}}>{lopHocPhan.tenLopHocPhan}</td>
+                          <td style={{textAlign: 'left'}}>{lopHocPhan.giangVien || <span className="text-muted">-</span>}</td>
+                          <td style={{textAlign: 'left'}}>{lopHocPhan.hinhThucHoc || <span className="text-muted">-</span>}</td>
+                          <td style={{textAlign: 'left'}}>{lopHocPhan.phongHoc || <span className="text-muted">-</span>}</td>
+                          <td style={{textAlign: 'center'}}>
+                            <Badge bg="info" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                              {lopHocPhan.soSinhVien || 0} sinh viên
+                            </Badge>
+                          </td>
+                          <td style={{textAlign: 'center'}}>
+                            <FaFileDownload 
+                              size={24} 
+                              color="#28a745" 
+                              style={{
+                                cursor: 'pointer',
+                                transition: 'transform 0.2s',
+                              }}
+                              className="download-icon"
+                              onClick={() => handleDownloadAttendanceMatrix(lopHocPhan)}
+                              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            />
+                          </td>
+                          <td style={{textAlign: 'center'}}>
+                            <div className="d-flex gap-2 justify-content-center">
+                              <Button
+                                variant="warning"
+                                size="sm"
+                                onClick={() => handleEdit(lopHocPhan)}
+                                className="shadow-sm"
+                                style={{ minWidth: '70px' }}
+                              >
+                                <FaEdit className="me-1" />
+                                Sửa
+                              </Button>
+                              <Button
+                                variant="danger"
+                                size="sm"
+                                onClick={() => handleDelete(lopHocPhan.maLopHocPhan, lopHocPhan.tenLopHocPhan)}
+                                className="shadow-sm"
+                                style={{ minWidth: '70px' }}
+                              >
+                                <FaTrash className="me-1" />
+                                Xóa
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
               )}
 
               {lopHocPhans.length === 0 && !loading && (
-                <div className="text-center py-4">
-                  <p className="text-muted">Không có lớp học phần nào</p>
+                <div className="text-center py-5">
+                  <FaGraduationCap size={48} className="text-muted mb-3" />
+                  <p className="text-muted fs-5">Không có lớp học phần nào</p>
                 </div>
               )}
 
               {/* Pagination for LopHocPhan */}
               {lhpTotalPages > 1 && (
-                <div className="d-flex justify-content-between align-items-center mt-3">
-                  <div className="text-muted small">Tổng: {lhpTotalElements} lớp học phần</div>
+                <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                  <div className="text-muted fw-semibold">
+                    Tổng: <span className="text-primary">{lhpTotalElements}</span> lớp học phần
+                  </div>
                   <Pagination className="mb-0">
                     <Pagination.Prev 
                       disabled={lhpPage === 0}
                       onClick={() => setLhpPage(Math.max(0, lhpPage - 1))}
+                      className="shadow-sm"
                     />
-                    {Array.from({ length: lhpTotalPages }, (_, i) => i).map(pageNumber => (
-                      <Pagination.Item
-                        key={pageNumber}
-                        active={pageNumber === lhpPage}
-                        onClick={() => setLhpPage(pageNumber)}
-                      >
-                        {pageNumber + 1}
-                      </Pagination.Item>
-                    ))}
+                    {getPaginationItems(lhpPage, lhpTotalPages).map((item, index) => {
+                      if (item === 'ellipsis-start' || item === 'ellipsis-end') {
+                        return (
+                          <Pagination.Ellipsis key={`ellipsis-${index}`} disabled />
+                        );
+                      }
+                      return (
+                        <Pagination.Item
+                          key={item}
+                          active={item === lhpPage}
+                          onClick={() => setLhpPage(item)}
+                          className="shadow-sm"
+                        >
+                          {item + 1}
+                        </Pagination.Item>
+                      );
+                    })}
                     <Pagination.Next 
                       disabled={lhpPage >= lhpTotalPages - 1}
                       onClick={() => setLhpPage(Math.min(lhpTotalPages - 1, lhpPage + 1))}
+                      className="shadow-sm"
                     />
                   </Pagination>
                 </div>
@@ -940,15 +1047,23 @@ const LopHocPhanManagement = () => {
                   disabled={currentPage === 1}
                   onClick={() => handlePageChange(currentPage - 1)}
                 />
-                {Array.from({ length: getTotalPages() }, (_, i) => i + 1).map(pageNumber => (
-                  <Pagination.Item
-                    key={pageNumber}
-                    active={pageNumber === currentPage}
-                    onClick={() => handlePageChange(pageNumber)}
-                  >
-                    {pageNumber}
-                  </Pagination.Item>
-                ))}
+                {getPaginationItems(currentPage - 1, getTotalPages()).map((item, index) => {
+                  if (item === 'ellipsis-start' || item === 'ellipsis-end') {
+                    return (
+                      <Pagination.Ellipsis key={`ellipsis-${index}`} disabled />
+                    );
+                  }
+                  const pageNumber = item + 1;
+                  return (
+                    <Pagination.Item
+                      key={item}
+                      active={pageNumber === currentPage}
+                      onClick={() => handlePageChange(pageNumber)}
+                    >
+                      {pageNumber}
+                    </Pagination.Item>
+                  );
+                })}
                 <Pagination.Next 
                   disabled={currentPage === getTotalPages()}
                   onClick={() => handlePageChange(currentPage + 1)}

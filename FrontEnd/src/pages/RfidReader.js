@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { attendanceAPI, studentAPI, deviceAPI } from '../services/api';
+import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
 
 const SettingsPage = () => {
   const [unprocessedRfids, setUnprocessedRfids] = useState([]);
@@ -105,10 +106,15 @@ const SettingsPage = () => {
   });
 
   return (
-    <Container>
+    <Container fluid className="py-4">
       <Row>
         <Col>
-          <h3>Cài đặt</h3>
+          <Card className="shadow-sm mb-4" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+            <Card.Header className="bg-primary text-white d-flex align-items-center" style={{ border: 'none' }}>
+              <FaCog className="me-2" size={24} />
+              <h3 className="mb-0">Cài đặt hệ thống</h3>
+            </Card.Header>
+          </Card>
           <style>{`
             @keyframes sweep {
               0% { left: -40%; }
@@ -124,27 +130,56 @@ const SettingsPage = () => {
             .scan-dot.d3 { animation-delay: .4s }
           `}</style>
           <Tabs defaultActiveKey="read" className="mb-3">
-            <Tab eventKey="read" title="Quét RFID">
-              <Card>
-                <Card.Header className="d-flex justify-content-between align-items-center">
-                  <div>Nhận các RFID được quét</div>
+            <Tab eventKey="read" title={
+              <span className="d-flex align-items-center">
+                <FaQrcode className="me-2" />
+                Quét RFID
+              </span>
+            }>
+              <Card  style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <div className="d-flex align-items-center">
+                    <FaQrcode className="me-2" />
+                    <h5 className="mb-0">Nhận các RFID được quét</h5>
+                  </div>
                   <div className="d-flex align-items-center gap-2">
-                    <Form.Select size="sm" style={{width: 190}} value={statusFilter} onChange={e => { setStatusFilter(e.target.value); setPage(1); }}>
+                    <Form.Select 
+                      size="sm" 
+                      style={{width: 190}} 
+                      value={statusFilter} 
+                      onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
+                      className="shadow-sm"
+                    >
                       <option value="all">Tất cả trạng thái</option>
                       <option value="registered">Đã đăng ký</option>
                       <option value="unregistered">Chưa đăng ký</option>
                     </Form.Select>
-                    <Button size="sm" variant={polling ? 'danger' : 'success'} onClick={() => setPolling(!polling)}>
-                      {polling ? 'Dừng quét' : 'Quét RFID'}
+                    <Button 
+                      size="sm" 
+                      variant={polling ? 'danger' : 'success'} 
+                      onClick={() => setPolling(!polling)}
+                      className="shadow-sm"
+                    >
+                      {polling ? (
+                        <>
+                          <FaStop className="me-2" />
+                          Dừng quét
+                        </>
+                      ) : (
+                        <>
+                          <FaPlay className="me-2" />
+                          Quét RFID
+                        </>
+                      )}
                     </Button>
                   </div>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   {polling && (
-                    <div className="mb-3 p-3 border rounded bg-light">
-                      <div className="d-flex align-items-center justify-content-center gap-3">
+                    <div className="mb-4 p-4 border rounded shadow-sm" style={{ backgroundColor: '#f8f9fa', border: '2px solid #0dcaf0' }}>
+                      <div className="d-flex align-items-center justify-content-center gap-3 mb-3">
                         <Spinner animation="border" variant="primary" />
-                        <div className="fw-semibold">Đang quét RFID...</div>
+                        <div className="fw-semibold fs-5">Đang quét RFID...</div>
                       </div>
                       <div className="position-relative mt-3" style={{height:8, overflow:'hidden', borderRadius:4}}>
                         <div style={{position:'absolute', top:0, left:'-40%', width:'40%', height:'100%', background:'linear-gradient(90deg, transparent, rgba(13,110,253,0.5), transparent)', animation:'sweep 1.2s linear infinite'}} />
@@ -157,98 +192,210 @@ const SettingsPage = () => {
                       </div>
                     </div>
                   )}
-             
 
-                  <Table responsive striped bordered hover>
-                    <thead>
-                      <tr>
-                        <th>ID</th>
-                        <th>RFID</th>
-                        <th>Mã sinh viên</th>
-                        <th>Tên sinh viên</th>
-                        <th>Thời gian đọc</th>
-                        <th>Trạng thái</th>
-                        <th>Thao tác</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRfids.slice((page-1)*pageSize, page*pageSize).map((rfid) => (
-                        <tr key={rfid.id}>
-                          <td>{rfid.id}</td>
-                          <td><code className="rfid-display">{rfid.rfid}</code></td>
-                          <td>{rfid.maSinhVien || '-'}</td>
-                          <td>{rfid.tenSinhVien || '-'}</td>
-                          <td>{new Date(rfid.createdAt).toLocaleString('vi-VN')}</td>
-                          <td>
-                            <Badge bg={rfid.processed ? 'success' : 'warning'}>
-                              {rfid.processed ? 'Đã đăng ký' : 'Chưa đăng ký'}
-                            </Badge>
-                          </td>
-                          <td className="d-flex gap-2">
-                            {!rfid.processed && (
-                              <Button variant="outline-danger" size="sm" onClick={() => handleDeleteUnregistered(rfid.id)}>Xóa</Button>
-                            )}
-                            <Button variant="outline-secondary" size="sm" onClick={() => copyToClipboard(rfid.rfid)}>Copy</Button>
-                          </td>
+                  <div className="table-responsive">
+                    <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                      <thead className="table-info">
+                        <tr>
+                          <th style={{ fontWeight: '600' }}>ID</th>
+                          <th style={{ fontWeight: '600' }}>RFID</th>
+                          <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
+                          <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                          <th style={{ fontWeight: '600' }}>Thời gian đọc</th>
+                          <th style={{ fontWeight: '600' }}>Trạng thái</th>
+                          <th style={{ fontWeight: '600', textAlign: 'center' }}>Thao tác</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </Table>
+                      </thead>
+                      <tbody>
+                        {filteredRfids.slice((page-1)*pageSize, page*pageSize).map((rfid) => (
+                          <tr key={rfid.id} style={{ verticalAlign: 'middle' }}>
+                            <td>{rfid.id}</td>
+                            <td>
+                              <code className="bg-light px-2 py-1 rounded" style={{ fontSize: '0.9rem' }}>
+                                {rfid.rfid}
+                              </code>
+                            </td>
+                            <td>
+                              {rfid.maSinhVien ? (
+                                <Badge bg="secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                  {rfid.maSinhVien}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted">-</span>
+                              )}
+                            </td>
+                            <td style={{ fontWeight: '500' }}>{rfid.tenSinhVien || <span className="text-muted">-</span>}</td>
+                            <td>{new Date(rfid.createdAt).toLocaleString('vi-VN')}</td>
+                            <td>
+                              <Badge bg={rfid.processed ? 'success' : 'warning'} style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                {rfid.processed ? (
+                                  <>
+                                    <FaCheckCircle className="me-1" />
+                                    Đã đăng ký
+                                  </>
+                                ) : (
+                                  <>
+                                    <FaExclamationTriangle className="me-1" />
+                                    Chưa đăng ký
+                                  </>
+                                )}
+                              </Badge>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div className="d-flex gap-2 justify-content-center">
+                                {!rfid.processed && (
+                                  <Button 
+                                    variant="outline-danger" 
+                                    size="sm" 
+                                    onClick={() => handleDeleteUnregistered(rfid.id)}
+                                    className="shadow-sm"
+                                  >
+                                    <FaTrash className="me-1" />
+                                    Xóa
+                                  </Button>
+                                )}
+                                <Button 
+                                  variant="outline-secondary" 
+                                  size="sm" 
+                                  onClick={() => copyToClipboard(rfid.rfid)}
+                                  className="shadow-sm"
+                                >
+                                  <FaCopy className="me-1" />
+                                  Copy
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
 
                   {filteredRfids.length === 0 && (
-                    <Alert variant="success">Không có RFID nào chưa được đăng ký.</Alert>
+                    <div className="text-center py-5">
+                      <FaQrcode size={64} className="text-muted mb-3" />
+                      <Alert variant="success" className="d-inline-block">
+                        Không có RFID nào chưa được đăng ký.
+                      </Alert>
+                    </div>
                   )}
 
-                  <div className="d-flex justify-content-between align-items-center mt-3">
-                    <div>Trang {page}</div>
-                    <div className="d-flex gap-2">
-                      <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Trước</Button>
-                      <Button variant="outline-secondary" disabled={filteredRfids.length <= page * pageSize} onClick={() => setPage(p => p + 1)}>Sau</Button>
+                  {filteredRfids.length > 0 && (
+                    <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                      <div className="text-muted fw-semibold">
+                        Trang <span className="text-primary">{page}</span>
+                      </div>
+                      <div className="d-flex gap-2">
+                        <Button 
+                          variant="outline-secondary" 
+                          disabled={page === 1} 
+                          onClick={() => setPage(p => Math.max(1, p - 1))}
+                          className="shadow-sm"
+                        >
+                          Trước
+                        </Button>
+                        <Button 
+                          variant="outline-secondary" 
+                          disabled={filteredRfids.length <= page * pageSize} 
+                          onClick={() => setPage(p => p + 1)}
+                          className="shadow-sm"
+                        >
+                          Sau
+                        </Button>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </Card.Body>
               </Card>
             </Tab>
-            <Tab eventKey="device" title="Thiết lập thiết bị">
-              <Card>
-                <Card.Header style={{backgroundColor: '#0d6efd', color: '#fff'}}>Đăng ký thiết bị cho phòng học</Card.Header>
-                <Card.Body>
-                  <Form onSubmit={handleCreateDevice} className="mb-4">
-                    <Row>
-                      <Col md={4}>
-                        <Form.Group>
-                          <Form.Label>Mã thiết bị</Form.Label>
-                          <Form.Control value={newDevice.maThietBi} onChange={(e) => setNewDevice(v => ({ ...v, maThietBi: e.target.value }))} />
-                        </Form.Group>
-                      </Col>
-                      <Col md={4}>
-                        <Form.Group>
-                          <Form.Label>Phòng học</Form.Label>
-                          <Form.Control value={newDevice.phongHoc} onChange={(e) => setNewDevice(v => ({ ...v, phongHoc: e.target.value }))} />
-                        </Form.Group>
-                      </Col>
-                      <Col md={4} style={{position: 'relative', top: -10}} className="d-flex align-items-end">
-                        <Button type="submit">Lưu thiết bị</Button>
-                      </Col>
-                    </Row>
-                  </Form>
+            <Tab eventKey="device" title={
+              <span className="d-flex align-items-center">
+                <FaDesktop className="me-2" />
+                Thiết lập thiết bị
+              </span>
+            }>
+              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-primary text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <FaDesktop className="me-2" />
+                  <h5 className="mb-0">Đăng ký thiết bị cho phòng học</h5>
+                </Card.Header>
+                <Card.Body className="p-4">
+                  <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                    <Card.Body className="p-4">
+                      <Form onSubmit={handleCreateDevice}>
+                        <Row className="g-3 align-items-end">
+                          <Col md={4}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaDesktop className="me-2 text-primary" />
+                                Mã thiết bị
+                              </Form.Label>
+                              <Form.Control 
+                                value={newDevice.maThietBi} 
+                                onChange={(e) => setNewDevice(v => ({ ...v, maThietBi: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="Nhập mã thiết bị..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={4}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaDoorOpen className="me-2 text-primary" />
+                                Phòng học
+                              </Form.Label>
+                              <Form.Control 
+                                value={newDevice.phongHoc} 
+                                onChange={(e) => setNewDevice(v => ({ ...v, phongHoc: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="Nhập phòng học..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={4} className="d-flex align-items-end">
+                            <Button type="submit" variant="primary" style={{ position: 'relative', top: '-10px' }} className="w-100 shadow-sm">
+                              <FaCheckCircle className="me-2" />
+                              Lưu thiết bị
+                            </Button>
+                          </Col>
+                        </Row>
+                      </Form>
+                    </Card.Body>
+                  </Card>
 
-                  <Table responsive bordered hover>
-                    <thead>
-                      <tr>
-                        <th>Mã thiết bị</th>
-                        <th>Phòng học</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {devices.map(d => (
-                        <tr key={d.maThietBi}>
-                          <td>{d.maThietBi}</td>
-                          <td>{d.phongHoc}</td>
+                  <div className="table-responsive">
+                    <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                      <thead className="table-primary">
+                        <tr>
+                          <th style={{ fontWeight: '600' }}>Mã thiết bị</th>
+                          <th style={{ fontWeight: '600' }}>Phòng học</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </Table>
+                      </thead>
+                      <tbody>
+                        {devices.map(d => (
+                          <tr key={d.maThietBi} style={{ verticalAlign: 'middle' }}>
+                            <td>
+                              <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                {d.maThietBi}
+                              </Badge>
+                            </td>
+                            <td style={{ fontWeight: '500' }}>{d.phongHoc}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+
+                  {devices.length === 0 && (
+                    <div className="text-center py-5">
+                      <FaDesktop size={64} className="text-muted mb-3" />
+                      <Alert variant="info" className="d-inline-block">
+                        Chưa có thiết bị nào được đăng ký.
+                      </Alert>
+                    </div>
+                  )}
                 </Card.Body>
               </Card>
             </Tab>
@@ -256,25 +403,66 @@ const SettingsPage = () => {
         </Col>
       </Row>
 
-      <Modal show={showModal} onHide={() => setShowModal(false)}>
-        <Modal.Header closeButton>
-          <Modal.Title>Kết quả quét RFID</Modal.Title>
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
+        <Modal.Header closeButton className={scannedInfo.status === 'found' ? 'bg-success text-white' : 'bg-warning text-white'}>
+          <Modal.Title className="d-flex align-items-center">
+            <FaQrcode className="me-2" />
+            Kết quả quét RFID
+          </Modal.Title>
         </Modal.Header>
-        <Modal.Body>
-          <p><strong>RFID:</strong> <code>{scannedInfo.rfid}</code></p>
+        <Modal.Body className="p-4">
+          <div className="mb-3">
+            <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+              <FaQrcode className="me-2 text-primary" />
+              RFID:
+            </Form.Label>
+            <code className="bg-light px-3 py-2 rounded d-block" style={{ fontSize: '1.1rem' }}>
+              {scannedInfo.rfid}
+            </code>
+          </div>
           {scannedInfo.status === 'found' ? (
-            <>
-              <p><strong>Tên sinh viên:</strong> {scannedInfo.name}</p>
-              <p><strong>Mã sinh viên:</strong> {scannedInfo.maSinhVien}</p>
-            </>
+            <div>
+              <Alert variant="success" className="shadow-sm" style={{ border: '1px solid #28a745' }}>
+                <div className="d-flex align-items-center mb-2">
+                  <FaCheckCircle className="me-2" size={20} />
+                  <strong>RFID đã được đăng ký</strong>
+                </div>
+                <div className="mt-3">
+                  <p className="mb-2">
+                    <strong>Tên sinh viên:</strong> 
+                    <Badge bg="secondary" className="ms-2" style={{ fontSize: '0.95rem', padding: '0.4rem 0.6rem' }}>
+                      {scannedInfo.name}
+                    </Badge>
+                  </p>
+                  <p className="mb-0">
+                    <strong>Mã sinh viên:</strong> 
+                    <Badge bg="primary" className="ms-2" style={{ fontSize: '0.95rem', padding: '0.4rem 0.6rem' }}>
+                      {scannedInfo.maSinhVien}
+                    </Badge>
+                  </p>
+                </div>
+              </Alert>
+            </div>
           ) : (
-            <Alert variant="warning">RFID chưa được đăng ký. Hãy copy để đăng ký mới.</Alert>
+            <Alert variant="warning" className="shadow-sm" style={{ border: '1px solid #ffc107' }}>
+              <div className="d-flex align-items-center">
+                <FaExclamationTriangle className="me-2" size={20} />
+                <div>
+                  <strong>RFID chưa được đăng ký.</strong> Hãy copy để đăng ký mới.
+                </div>
+              </div>
+            </Alert>
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowModal(false)}>Đóng</Button>
+          <Button variant="secondary" onClick={() => setShowModal(false)} className="shadow-sm">
+            Đóng
+          </Button>
           {scannedInfo.status === 'not_found' && (
-            <Button variant="primary" onClick={() => copyToClipboard(scannedInfo.rfid)}>Copy RFID</Button>
+            <Button variant="primary" onClick={() => copyToClipboard(scannedInfo.rfid)} className="shadow-sm">
+              <FaCopy className="me-2" />
+              Copy RFID
+            </Button>
           )}
         </Modal.Footer>
       </Modal>
