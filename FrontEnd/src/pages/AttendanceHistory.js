@@ -17,6 +17,7 @@ const AttendanceHistory = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
   const [studentsInLop, setStudentsInLop] = useState([]);
   const socketRef = useRef(null);
+  const notifiedIdsRef = useRef(new Set()); // Track IDs that have been notified
   const [attendanceStats, setAttendanceStats] = useState({
     totalStudents: 0,
     attended: 0,
@@ -78,22 +79,56 @@ const AttendanceHistory = () => {
 
       socketRef.current.on("update-attendance", (result) => {
         console.log("New message received:", result);
-        result = JSON.parse(result);
-      setAttendance((prev) => {
-        // replace if same id exists; otherwise prepend
-        const index = prev.findIndex((r) => r.id === result.id);
-        let next;
-        if (index !== -1) {
-          next = [...prev];
-          next[index] = result;
-        } else {
-          next = [result, ...prev];
+        try {
+          result = typeof result === 'string' ? JSON.parse(result) : result;
+        } catch (e) {
+          console.error("Error parsing result:", e);
+          return;
         }
-        return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      });
-
-
-
+        
+        setAttendance((prev) => {
+          // Kiểm tra xem đây có phải là bản ghi mới không (chưa có trong danh sách)
+          const isNewRecord = !prev.some(r => r.id === result.id);
+          
+          // replace if same id exists; otherwise prepend
+          const index = prev.findIndex((r) => r.id === result.id);
+          let next;
+          if (index !== -1) {
+            next = [...prev];
+            next[index] = result;
+          } else {
+            next = [result, ...prev];
+          }
+          
+          // Hiển thị thông báo nếu là bản ghi mới và chưa được thông báo
+          if (isNewRecord && result.id && !notifiedIdsRef.current.has(result.id)) {
+            notifiedIdsRef.current.add(result.id);
+            // Sử dụng setTimeout để đảm bảo toast được gọi sau khi state đã cập nhật
+            setTimeout(() => {
+              toast.info(
+                <div>
+                  <div className="fw-bold">Điểm danh mới</div>
+                  <div className="small">
+                    {result.tenSinhVien} ({result.maSinhVien})
+                  </div>
+                  <div className="small text-muted">
+                    {result.phongHoc || 'N/A'} - {new Date(result.createdAt).toLocaleTimeString('vi-VN')}
+                  </div>
+                </div>,
+                {
+                  position: "top-right",
+                  autoClose: 5000,
+                  hideProgressBar: false,
+                  closeOnClick: true,
+                  pauseOnHover: true,
+                  draggable: true,
+                }
+              );
+            }, 0);
+          }
+          
+          return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        });
       });
     }
 
@@ -219,6 +254,12 @@ const AttendanceHistory = () => {
         new Date(b.createdAt) - new Date(a.createdAt)
       );
       setAttendance(sortedData);
+      // Đánh dấu tất cả các bản ghi đã load là đã được thông báo để tránh hiển thị toast cho dữ liệu cũ
+      sortedData.forEach(record => {
+        if (record.id) {
+          notifiedIdsRef.current.add(record.id);
+        }
+      });
     } catch (error) {
       // tránh spam toast do polling liên tục
       // toast.error('Lỗi khi tải lịch sử điểm danh');

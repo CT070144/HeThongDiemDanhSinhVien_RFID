@@ -185,7 +185,7 @@ public class AttendanceService {
         LocalTime currentTime = LocalTime.now();
         
         // Ca 1: 7h - 9h25 (có thể điểm danh từ 6h50 - 9h35)
-        if (currentTime.isAfter(LocalTime.of(1, 50)) && currentTime.isBefore(LocalTime.of(9, 35))) {
+        if (currentTime.isAfter(LocalTime.of(00, 10)) && currentTime.isBefore(LocalTime.of(9, 35))) {
             return 1;
         }
         // Ca 2: 9h35 - 12h (có thể điểm danh từ 9h25 - 12h10)
