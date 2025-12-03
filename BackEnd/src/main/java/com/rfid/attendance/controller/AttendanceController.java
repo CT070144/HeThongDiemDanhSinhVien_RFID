@@ -44,6 +44,18 @@ public class AttendanceController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    @GetMapping("/range")
+    public ResponseEntity<List<PhieuDiemDanh>> getAttendanceByDateRange(
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate) {
+        try {
+            List<PhieuDiemDanh> attendance = attendanceService.getAttendanceByDateRange(startDate, endDate);
+            return ResponseEntity.ok(attendance);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
     
     @GetMapping("/filter")
     public ResponseEntity<List<PhieuDiemDanh>> getAttendanceByFilters(

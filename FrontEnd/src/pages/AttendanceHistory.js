@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal } from 'react-bootstrap';
 import * as XLSX from 'xlsx';
 import { exportAttendanceToExcel } from '../services/exportExcel';
 import { toast } from 'react-toastify';
@@ -37,6 +37,9 @@ const AttendanceHistory = () => {
     phongHoc: '',
     lopHocPhan: ''
   });
+  const [showLopHocPhanModal, setShowLopHocPhanModal] = useState(false);
+  const [lopHocPhanSearch, setLopHocPhanSearch] = useState('');
+  const [selectedLopHocPhanName, setSelectedLopHocPhanName] = useState('');
 
   useEffect(() => {
     loadAttendance();
@@ -284,6 +287,7 @@ const AttendanceHistory = () => {
       phongHoc: '',
       lopHocPhan: ''
     });
+    setSelectedLopHocPhanName('');
   };
 
   const getStatusBadge = (trangThai) => {
@@ -404,20 +408,16 @@ const AttendanceHistory = () => {
                           <FaGraduationCap className="me-2 text-primary" />
                           Lớp học phần
                         </Form.Label>
-                        <Form.Select
-                          name="lopHocPhan"
-                          value={filters.lopHocPhan}
-                          onChange={handleFilterChange}
-                          className="shadow-sm"
-                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        <Button
+                          variant="outline-primary"
+                          className="w-100 shadow-sm text-start d-flex justify-content-between align-items-center"
+                          style={{ borderRadius: '0.375rem' }}
+                          onClick={() => setShowLopHocPhanModal(true)}
                         >
-                          <option value="">Tất cả lớp</option>
-                          {lopHocPhans.map((lop) => (
-                            <option key={lop.maLopHocPhan} value={lop.maLopHocPhan}>
-                              {lop.tenLopHocPhan}
-                            </option>
-                          ))}
-                        </Form.Select>
+                          <span style={{ whiteSpace: 'wrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {selectedLopHocPhanName || 'Chọn lớp học phần'}
+                          </span>
+                        </Button>
                       </Form.Group>
                     </Col>
                     <Col xs={12} sm={6} md={4} lg={2}>
@@ -676,6 +676,99 @@ const AttendanceHistory = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Modal chọn lớp học phần */}
+      <Modal
+        show={showLopHocPhanModal}
+        onHide={() => setShowLopHocPhanModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Chọn lớp học phần</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Tìm kiếm theo mã hoặc tên lớp học phần</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="Nhập mã lớp học phần hoặc tên lớp..."
+              value={lopHocPhanSearch}
+              onChange={(e) => setLopHocPhanSearch(e.target.value)}
+            />
+          </Form.Group>
+          <div style={{ height: '400px', overflowY: 'auto' }}>
+            <Table hover responsive size="sm" className="align-middle">
+              <thead>
+                <tr>
+                  <th style={{ width: '5%' }}></th>
+                  <th>Mã lớp học phần</th>
+                  <th>Tên lớp học phần</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lopHocPhans
+                  .filter((lop) => {
+                    if (!lopHocPhanSearch.trim()) return true;
+                    const keyword = lopHocPhanSearch.toLowerCase();
+                    return (
+                      lop.maLopHocPhan.toLowerCase().includes(keyword) ||
+                      (lop.tenLopHocPhan || '').toLowerCase().includes(keyword)
+                    );
+                  })
+                  .map((lop) => (
+                    <tr
+                      key={lop.maLopHocPhan}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          lopHocPhan: lop.maLopHocPhan,
+                        }));
+                        setSelectedLopHocPhanName(lop.tenLopHocPhan);
+                        setShowLopHocPhanModal(false);
+                      }}
+                    >
+                      <td>
+                        <Form.Check
+                          type="radio"
+                          name="lopHocPhanRadio"
+                          checked={filters.lopHocPhan === lop.maLopHocPhan}
+                          readOnly
+                        />
+                      </td>
+                      <td>
+                        <Badge bg="primary">{lop.maLopHocPhan}</Badge>
+                      </td>
+                      <td>{lop.tenLopHocPhan}</td>
+                    </tr>
+                  ))}
+                {lopHocPhans.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-center text-muted py-3">
+                      Chưa có lớp học phần nào
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="outline-secondary"
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, lopHocPhan: '' }));
+              setSelectedLopHocPhanName('');
+            }}
+          >
+            Xóa lựa chọn
+          </Button>
+          <Button variant="secondary" onClick={() => setShowLopHocPhanModal(false)}>
+            Đóng
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };

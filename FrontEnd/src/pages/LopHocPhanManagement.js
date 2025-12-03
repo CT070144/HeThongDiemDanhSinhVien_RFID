@@ -626,9 +626,8 @@ const LopHocPhanManagement = () => {
                       </Col>
                       <Col xs={12} md={4}>
                         <div className="d-flex gap-2">
-                          <Button type="submit" variant="primary" style={{ position: 'relative', top: '-10px' }} className="flex-fill shadow-sm">
-                            <FaSearch className="me-2" />
-                            Tìm kiếm
+                          <Button type="submit" variant="primary" style={{ maxWidth: '50px', position: 'relative', top: '-10px' }} className="flex-fill shadow-sm">
+                            <FaSearch size={20} className="me-2" />
                           </Button>
                           <Button 
                             type="button" 

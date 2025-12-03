@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback,useRef } from 'react';
-import { Container, Row, Col, Card, Table, Button, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Alert, Badge, Dropdown } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
-import { FaUsers, FaCalendarCheck, FaExclamationTriangle, FaClock, FaChartBar, FaChartPie, FaChartLine, FaSync } from 'react-icons/fa';
+import { FaUsers, FaCalendarCheck, FaExclamationTriangle, FaClock, FaChartBar, FaChartPie, FaChartLine, FaSync, FaFilter } from 'react-icons/fa';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -51,17 +51,121 @@ const Dashboard = () => {
     attendanceStatus: {},
     weeklyAttendance: []
   });
+  const [dateFilterType, setDateFilterType] = useState('7days');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  const computeDateRange = useCallback(() => {
+    const today = new Date();
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    let start = new Date(end);
+
+    const format = (d) => d.toISOString().split('T')[0];
+
+    switch (dateFilterType) {
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case '7days':
+        start.setDate(start.getDate() - 6);
+        break;
+      case '30days':
+        start.setDate(start.getDate() - 29);
+        break;
+      case 'thisWeek': {
+        const day = end.getDay() || 7; // Mon=1..Sun=7
+        start.setDate(end.getDate() - (day - 1));
+        break;
+      }
+      case 'lastWeek': {
+        const day = end.getDay() || 7;
+        end.setDate(end.getDate() - day);
+        start = new Date(end);
+        start.setDate(end.getDate() - 6);
+        break;
+      }
+      case 'thisMonth':
+        start = new Date(end.getFullYear(), end.getMonth(), 1);
+        break;
+      case 'lastMonth': {
+        const year = end.getFullYear();
+        const month = end.getMonth() - 1;
+        start = new Date(year, month, 1);
+        end.setFullYear(year, month + 1, 0);
+        break;
+      }
+      case 'thisYear':
+        start = new Date(end.getFullYear(), 0, 1);
+        break;
+      case 'lastYear':
+        start = new Date(end.getFullYear() - 1, 0, 1);
+        end.setFullYear(end.getFullYear() - 1, 11, 31);
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          return { startDate: customStartDate, endDate: customEndDate };
+        }
+        return { startDate: null, endDate: null };
+      default:
+        break;
+    }
+
+    return { startDate: format(start), endDate: format(end) };
+  }, [dateFilterType, customStartDate, customEndDate]);
+
+  const getDateFilterLabel = () => {
+    const labels = {
+      today: 'Hôm nay',
+      yesterday: 'Hôm qua',
+      '7days': '7 ngày qua',
+      '30days': '30 ngày qua',
+      thisWeek: 'Tuần này',
+      lastWeek: 'Tuần trước',
+      thisMonth: 'Tháng này',
+      lastMonth: 'Tháng trước',
+      thisYear: 'Năm nay',
+      lastYear: 'Năm trước',
+      custom: 'Tùy chọn',
+    };
+
+    const { startDate, endDate } = computeDateRange();
+    const label = labels[dateFilterType] || 'Khoảng thời gian';
+
+    if (!startDate || !endDate) {
+      return label;
+    }
+
+    const fmt = (d) => {
+      const [y, m, day] = d.split('-');
+      return `${day}/${m}/${y}`;
+    };
+
+    if (startDate === endDate) {
+      return `${label} (${fmt(startDate)})`;
+    }
+
+    return `${label} (${fmt(startDate)} - ${fmt(endDate)})`;
+  };
 
   const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
+      const { startDate, endDate } = computeDateRange();
       
       // Load students count
       const studentsResponse = await studentAPI.getAll();
       const totalStudents = studentsResponse.data.length;
 
-      // Load today's attendance
-      const attendanceResponse = await attendanceAPI.getToday();
+      // Load attendance by date range
+      let attendanceResponse;
+      if (dateFilterType === 'today') {
+        attendanceResponse = await attendanceAPI.getToday();
+      } else {
+        attendanceResponse = await attendanceAPI.getByDateRange(startDate, endDate);
+      }
       const todayAttendance = attendanceResponse.data;
       todayAttendance.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -91,11 +195,11 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [computeDateRange, dateFilterType]);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
   
   useEffect(() => {
     // Initialize socket connection only once
@@ -336,10 +440,158 @@ const Dashboard = () => {
     <Container fluid className="py-4" style={{ maxWidth: '88%' }}>
       <Row>
         <Col>
-          <h2 className="mb-4 d-flex align-items-center">
-            <FaChartBar className="me-2 text-primary" />
-            Dashboard - Hệ thống điểm danh RFID
-          </h2>
+          <Row className="mb-3 align-items-center justify-content-between">
+            <Col>
+              <h2 className="mb-0 d-flex align-items-center">
+                <FaChartBar className="me-2 text-primary" />
+                Dashboard - Hệ thống điểm danh RFID
+              </h2>
+            </Col>
+            <Col xs="auto">
+              <Dropdown align="end">
+                <Dropdown.Toggle
+                  variant="outline-primary"
+                  style={
+                    {
+                      transition: 'all 0.2s ease'
+                    }
+                  }
+                  className="d-flex align-items-center"
+                  id="date-filter-toggle"
+                >
+                  <FaCalendarCheck className="me-2" />
+                  <span>{getDateFilterLabel()}</span>
+                </Dropdown.Toggle>
+                <Dropdown.Menu className="p-3" style={{ minWidth: '420px' }}>
+                  <div className="mb-3">
+                    <Row className="g-2">
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'today' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('today')}
+                        >
+                          Hôm nay
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'yesterday' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('yesterday')}
+                        >
+                          Hôm qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === '7days' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('7days')}
+                        >
+                          7 ngày qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === '30days' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('30days')}
+                        >
+                          30 ngày qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastWeek' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastWeek')}
+                        >
+                          Tuần trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisWeek' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisWeek')}
+                        >
+                          Tuần này
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastMonth' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastMonth')}
+                        >
+                          Tháng trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisMonth' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisMonth')}
+                        >
+                          Tháng này
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastYear' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastYear')}
+                        >
+                          Năm trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisYear' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisYear')}
+                        >
+                          Năm nay
+                        </Button>
+                      </Col>
+                    </Row>
+                  </div>
+
+                  <Button
+                    variant={dateFilterType === 'custom' ? 'primary' : 'outline-secondary'}
+                    className="w-100 mb-3"
+                    onClick={() => setDateFilterType('custom')}
+                  >
+                    Tùy chọn
+                  </Button>
+
+                  {dateFilterType === 'custom' && (
+                    <Row className="g-2 mb-3">
+                      <Col xs={6}>
+                        <label className="fw-semibold mb-1">Từ ngày</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                        />
+                      </Col>
+                      <Col xs={6}>
+                        <label className="fw-semibold mb-1">Đến ngày</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                        />
+                      </Col>
+                    </Row>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
+            </Col>
+          </Row>
           
           {/* Thống kê tổng quan */}
           <Row className="mb-4 g-3">
@@ -361,7 +613,7 @@ const Dashboard = () => {
                     <FaCalendarCheck size={48} className="text-success" />
                   </div>
                   <h2 className="text-success mb-2 fw-bold">{stats.todayAttendance}</h2>
-                  <p className="mb-0 text-muted fw-semibold">Điểm danh hôm nay</p>
+                  <p className="mb-0 text-muted fw-semibold">Điểm danh</p>
                 </Card.Body>
               </Card>
             </Col>
@@ -498,7 +750,7 @@ const Dashboard = () => {
             <Col>
               <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
                 <Card.Header className="bg-secondary text-white d-flex justify-content-between align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
-                  <h4 className="mb-0">Điểm danh hôm nay</h4>
+                  <h4 className="mb-0">Điểm danh theo khoảng thời gian</h4>
                   <Button variant="light" onClick={loadDashboardData} disabled={loading} className="shadow-sm">
                     <FaSync className={`me-2 ${loading ? 'fa-spin' : ''}`} />
                     {loading ? 'Đang tải...' : 'Làm mới'}

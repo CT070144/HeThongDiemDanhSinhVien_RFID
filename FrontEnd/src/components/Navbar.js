@@ -55,7 +55,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHome className="me-2" />
-                Dashboard
+                <span style={{ fontSize: '22px' }}>Dashboard</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/students">
@@ -70,7 +70,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaUsers className="me-2" />
-                Sinh viên
+                <span style={{ fontSize: '22px' }}>Sinh viên</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/lophocphan">
@@ -85,7 +85,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaGraduationCap className="me-2" />
-                Lớp học phần
+                <span style={{ fontSize: '22px' }}>Lớp học phần</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/attendance">
@@ -100,7 +100,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHistory className="me-2" />
-                Lịch sử điểm danh
+                <span style={{ fontSize: '22px' }}>Lịch sử điểm danh</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/rfid-reader">
@@ -115,7 +115,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaCog className="me-2" />
-                Thiết lập RFID
+                <span style={{ fontSize: '22px' }}>Thiết lập RFID</span>
               </Nav.Link>
             </LinkContainer>
           </Nav>

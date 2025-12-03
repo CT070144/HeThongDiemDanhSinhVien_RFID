@@ -57,6 +57,10 @@ public class AttendanceService {
     public List<PhieuDiemDanh> getAttendanceByStudent(String maSinhVien) {
         return phieuDiemDanhRepository.findByMaSinhVien(maSinhVien);
     }
+
+    public List<PhieuDiemDanh> getAttendanceByDateRange(LocalDate startDate, LocalDate endDate) {
+        return phieuDiemDanhRepository.findByDateRange(startDate, endDate);
+    }
     
     public PhieuDiemDanh processRfidAttendance(String rfid){
         // Log thông tin debug
