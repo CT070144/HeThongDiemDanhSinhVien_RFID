@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI } from '../services/api';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
-import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode } from 'react-icons/fa';
+import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode, FaCheckCircle } from 'react-icons/fa';
 
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
@@ -29,6 +29,7 @@ const StudentManagement = () => {
   const [scanning, setScanning] = useState(false);
   const [latestRfid, setLatestRfid] = useState(null);
   const [rfidStatus, setRfidStatus] = useState(null); // 'new', 'exists', 'current'
+  const [isDraggingImport, setIsDraggingImport] = useState(false);
 
   useEffect(() => {
     loadStudents();
@@ -231,20 +232,41 @@ const StudentManagement = () => {
   };
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
       const allowedTypes = [
         'application/vnd.ms-excel',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       ];
       
-      if (!allowedTypes.includes(file.type)) {
+      if (!allowedTypes.includes(file.type) && !file.name.endsWith('.xlsx') && !file.name.endsWith('.xls')) {
         toast.error('Dữ liệu trong file không đúng định dạng');
         return;
       }
       
       setImportFile(file);
     }
+  };
+
+  const handleImportFileDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setImportFile(file);
+    } else {
+      toast.error('Vui lòng chọn file Excel (.xlsx hoặc .xls)');
+    }
+  };
+
+  const handleImportFileDragOver = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(true);
+  };
+
+  const handleImportFileDragLeave = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(false);
   };
 
   const parseExcelFile = (file) => {
@@ -398,6 +420,7 @@ const StudentManagement = () => {
     setImportFile(null);
     setImportResult(null);
     setImporting(false);
+    setIsDraggingImport(false);
   };
 
   const handleCloseModal = () => {
@@ -778,18 +801,51 @@ const StudentManagement = () => {
           </Alert>
           
           <Form.Group className="mb-3">
-            <Form.Label>Chọn file Excel</Form.Label>
-            <Form.Control
-              type="file"
-              accept=".xls,.xlsx"
-              onChange={handleFileChange}
-              disabled={importing}
-            />
-            {importFile && (
-              <Form.Text className="text-muted">
-                Đã chọn: {importFile.name}
-              </Form.Text>
-            )}
+            <Form.Label className="fw-semibold d-flex align-items-center">
+              <FaUpload className="me-2 text-primary" />
+              Chọn file Excel
+            </Form.Label>
+            <div
+              onDrop={handleImportFileDrop}
+              onDragOver={handleImportFileDragOver}
+              onDragLeave={handleImportFileDragLeave}
+              style={{
+                border: `2px dashed ${isDraggingImport ? '#0d6efd' : '#dee2e6'}`,
+                borderRadius: '0.5rem',
+                padding: '2rem',
+                textAlign: 'center',
+                backgroundColor: importFile ? '#e7f3ff' : isDraggingImport ? '#f0f7ff' : '#f8f9fa',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onClick={() => document.getElementById('student-import-file-input').click()}
+            >
+              <input
+                id="student-import-file-input"
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileChange}
+                disabled={importing}
+                style={{ display: 'none' }}
+              />
+              {importFile ? (
+                <div>
+                  <FaCheckCircle className="text-success mb-2" size={32} />
+                  <p className="mb-1 fw-semibold text-success">{importFile.name}</p>
+                  <p className="text-muted small mb-2">Click để chọn file khác</p>
+                  <Button variant="outline-danger" size="sm" onClick={(e) => { e.stopPropagation(); setImportFile(null); }} disabled={importing}>
+                    <FaTrash className="me-1" />
+                    Xóa file
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  <FaUpload className="text-primary mb-2" size={32} />
+                  <p className="mb-1 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</p>
+                  <p className="text-muted small">Hỗ trợ file .xlsx, .xls</p>
+                </div>
+              )}
+            </div>
           </Form.Group>
 
           {importing && (

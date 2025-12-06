@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner, Pagination } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-import { attendanceAPI, studentAPI, deviceAPI } from '../services/api';
-import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle } from 'react-icons/fa';
+import { attendanceAPI, studentAPI, deviceAPI, roomAPI } from '../services/api';
+import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch } from 'react-icons/fa';
 
 const SettingsPage = () => {
   const [unprocessedRfids, setUnprocessedRfids] = useState([]);
@@ -14,11 +14,32 @@ const SettingsPage = () => {
   const [devices, setDevices] = useState([]);
   const [newDevice, setNewDevice] = useState({ maThietBi: '', phongHoc: '' });
   const [statusFilter, setStatusFilter] = useState('all');
+  const [rooms, setRooms] = useState([]);
+  const [roomKeyword, setRoomKeyword] = useState('');
+  const [roomPage, setRoomPage] = useState(0);
+  const [roomSize, setRoomSize] = useState(10);
+  const [roomTotalPages, setRoomTotalPages] = useState(0);
+  const [roomTotalElements, setRoomTotalElements] = useState(0);
+  const [editingRoom, setEditingRoom] = useState(null);
+  const [roomForm, setRoomForm] = useState({
+    maPhong: '',
+    tenPhong: '',
+    toaNha: '',
+    tang: '',
+    sucChua: '',
+    loaiPhong: '',
+    trangThai: 'active',
+  });
 
   useEffect(() => {
     loadUnprocessedRfids();
     loadDevices();
+    loadRooms();
   }, []);
+
+  useEffect(() => {
+    loadRooms();
+  }, [roomPage, roomSize]);
 
   useEffect(() => {
     if (!polling) return;
@@ -97,6 +118,137 @@ const SettingsPage = () => {
     } catch (e) {
       toast.error('Không thể tạo thiết bị');
     }
+  };
+
+  const loadRooms = async (keyword) => {
+    try {
+      const keywordToUse = keyword !== undefined ? keyword : roomKeyword;
+      const res = await roomAPI.getPaged(roomPage, roomSize, keywordToUse);
+      setRooms(res.data.content || []);
+      setRoomTotalPages(res.data.totalPages || 0);
+      setRoomTotalElements(res.data.totalElements || 0);
+    } catch (e) {
+      // silent
+    }
+  };
+
+  const resetRoomForm = () => {
+    setEditingRoom(null);
+    setRoomForm({
+      maPhong: '',
+      tenPhong: '',
+      toaNha: '',
+      tang: '',
+      sucChua: '',
+      loaiPhong: '',
+      trangThai: 'active',
+    });
+  };
+
+  const handleSaveRoom = async (e) => {
+    e.preventDefault();
+    if (!roomForm.maPhong) {
+      toast.error('Vui lòng nhập Mã phòng');
+      return;
+    }
+    try {
+      const payload = {
+        ...roomForm,
+        tang: roomForm.tang !== '' ? Number(roomForm.tang) : null,
+        sucChua: roomForm.sucChua !== '' ? Number(roomForm.sucChua) : null,
+      };
+      if (editingRoom) {
+        await roomAPI.update(editingRoom, payload);
+        toast.success('Cập nhật phòng học thành công');
+      } else {
+        await roomAPI.create(payload);
+        toast.success('Tạo phòng học thành công');
+      }
+      resetRoomForm();
+      loadRooms(roomKeyword);
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Lưu phòng học thất bại';
+      toast.error(msg);
+    }
+  };
+
+  const handleEditRoom = (room) => {
+    setEditingRoom(room.maPhong);
+    setRoomForm({
+      maPhong: room.maPhong || '',
+      tenPhong: room.tenPhong || '',
+      toaNha: room.toaNha || '',
+      tang: room.tang ?? '',
+      sucChua: room.sucChua ?? '',
+      loaiPhong: room.loaiPhong || '',
+      trangThai: room.trangThai || 'active',
+    });
+  };
+
+  const handleDeleteRoom = async (maPhong) => {
+    if (!window.confirm('Xóa phòng học này?')) return;
+    try {
+      await roomAPI.delete(maPhong);
+      toast.success('Đã xóa phòng học');
+      if (editingRoom === maPhong) resetRoomForm();
+      loadRooms(roomKeyword);
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Xóa phòng học thất bại';
+      toast.error(msg);
+    }
+  };
+
+  // Helper function to generate pagination items with ellipsis
+  const getPaginationItems = (currentPage, totalPages) => {
+    if (totalPages <= 1) {
+      return [0];
+    }
+    
+    const items = [];
+    const delta = 2; // Number of pages to show on each side of current page
+    
+    // If total pages is small, show all pages
+    if (totalPages <= 7) {
+      for (let i = 0; i < totalPages; i++) {
+        items.push(i);
+      }
+      return items;
+    }
+    
+    // Always show first page
+    items.push(0);
+    
+    // Calculate start and end of page range around current page
+    let start = Math.max(1, currentPage - delta);
+    let end = Math.min(totalPages - 2, currentPage + delta);
+    
+    // Add ellipsis after first page if there's a gap
+    if (start > 2) {
+      items.push('ellipsis-start');
+    } else if (start === 2) {
+      // If start is 2, show page 1 instead of ellipsis
+      items.push(1);
+    }
+    
+    // Add pages in range (skip if already added)
+    for (let i = start; i <= end; i++) {
+      if (i !== 0 && i !== totalPages - 1 && !items.includes(i)) {
+        items.push(i);
+      }
+    }
+    
+    // Add ellipsis before last page if there's a gap
+    if (end < totalPages - 3) {
+      items.push('ellipsis-end');
+    } else if (end === totalPages - 3 && !items.includes(totalPages - 2)) {
+      // If end is totalPages - 3, show page totalPages - 2 instead of ellipsis
+      items.push(totalPages - 2);
+    }
+    
+    // Always show last page
+    items.push(totalPages - 1);
+    
+    return items;
   };
 
   const filteredRfids = unprocessedRfids.filter(item => {
@@ -394,6 +546,280 @@ const SettingsPage = () => {
                       <Alert variant="info" className="d-inline-block">
                         Chưa có thiết bị nào được đăng ký.
                       </Alert>
+                    </div>
+                  )}
+                </Card.Body>
+              </Card>
+            </Tab>
+            <Tab eventKey="room" title={
+              <span className="d-flex align-items-center">
+                <FaBuilding className="me-2" />
+                Phòng học
+              </span>
+            }>
+              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-primary text-white d-flex align-items-center justify-content-between" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <div className="d-flex align-items-center">
+                    <FaBuilding className="me-2" />
+                    <h5 className="mb-0">{editingRoom ? 'Cập nhật phòng học' : 'Thêm phòng học'}</h5>
+                  </div>
+                  <Button variant="light" size="sm" className="shadow-sm" onClick={resetRoomForm}>
+                    <FaPlus className="me-1" />
+                    Tạo mới
+                  </Button>
+                </Card.Header>
+                <Card.Body className="p-4">
+                  <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                    <Card.Body className="p-3">
+                      <Form onSubmit={handleSaveRoom}>
+                        <Row className="g-3 align-items-end">
+                          <Col md={3}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaDoorOpen className="me-2 text-primary" />
+                                Mã phòng
+                              </Form.Label>
+                              <Form.Control
+                                value={roomForm.maPhong}
+                                onChange={(e) => setRoomForm(v => ({ ...v, maPhong: e.target.value }))}
+                                disabled={!!editingRoom}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="VD: A101"
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={3}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Tên phòng
+                              </Form.Label>
+                              <Form.Control
+                                value={roomForm.tenPhong}
+                                onChange={(e) => setRoomForm(v => ({ ...v, tenPhong: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="Phòng máy, Phòng lab..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={2}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Tòa nhà
+                              </Form.Label>
+                              <Form.Control
+                                value={roomForm.toaNha}
+                                onChange={(e) => setRoomForm(v => ({ ...v, toaNha: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="A, B, C..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={2}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Tầng
+                              </Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={roomForm.tang}
+                                onChange={(e) => setRoomForm(v => ({ ...v, tang: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="VD: 1"
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={2}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Sức chứa
+                              </Form.Label>
+                              <Form.Control
+                                type="number"
+                                value={roomForm.sucChua}
+                                onChange={(e) => setRoomForm(v => ({ ...v, sucChua: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="VD: 40"
+                              />
+                            </Form.Group>
+                          </Col>
+                        </Row>
+                        <Row className="g-3 align-items-end mt-3">
+                          <Col md={3}>
+                            <Form.Group className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Loại phòng
+                              </Form.Label>
+                              <Form.Control
+                                value={roomForm.loaiPhong}
+                                onChange={(e) => setRoomForm(v => ({ ...v, loaiPhong: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="Lý thuyết, Lab, Thực hành..."
+                              />
+                            </Form.Group>
+                          </Col>
+                          <Col md={3}>
+                            <Form.Group style={{ position: 'relative', top: '-10px' }} className="mb-0">
+                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                                <FaBuilding className="me-2 text-primary" />
+                                Trạng thái
+                              </Form.Label>
+                              <Form.Select
+                                value={roomForm.trangThai}
+                                onChange={(e) => setRoomForm(v => ({ ...v, trangThai: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                              >
+                                <option value="active">active</option>
+                                <option value="inactive">inactive</option>
+                              </Form.Select>
+                            </Form.Group>
+                          </Col>
+                          <Col md={6} className="d-flex justify-content-end">
+                            <Button type="submit" variant="primary" className="shadow-sm" style={{ minWidth: 180 }}>
+                              <FaCheckCircle className="me-2" />
+                              {editingRoom ? 'Cập nhật phòng' : 'Lưu phòng học'}
+                            </Button>
+                          </Col>
+                        </Row>
+                      </Form>
+                    </Card.Body>
+                  </Card>
+
+                  <div className="d-flex justify-content-between align-items-center mb-3">
+                    <div className="d-flex align-items-center gap-2">
+                      <Form.Control
+                        placeholder="Tìm kiếm phòng (mã/tên/tòa nhà)..."
+                        value={roomKeyword}
+                        onChange={(e) => setRoomKeyword(e.target.value)}
+                        className="shadow-sm"
+                        style={{ maxWidth: 320, border: '1px solid #dee2e6', borderRadius: '0.375rem', position: 'relative', top: '8px' }}
+                      />
+                      <Button variant="outline-primary" className=" w-100 shadow-sm shadow-sm" onClick={() => { setRoomPage(0); loadRooms(roomKeyword); }}>
+                        <FaSearch className="me-1" />
+                        Tìm
+                      </Button>
+                      <Button variant="outline-secondary" className="w-100 shadow-sm" onClick={() => { setRoomKeyword(''); setRoomPage(0); loadRooms(''); }}>
+                        <FaFilter className="me-1" />
+                        Xóa lọc
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="table-responsive">
+                    <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                      <thead className="table-primary">
+                        <tr>
+                          <th style={{ fontWeight: '600' }}>Mã phòng</th>
+                          <th style={{ fontWeight: '600' }}>Tên phòng</th>
+                          <th style={{ fontWeight: '600' }}>Tòa nhà</th>
+                          <th style={{ fontWeight: '600' }}>Tầng</th>
+                          <th style={{ fontWeight: '600' }}>Sức chứa</th>
+                          <th style={{ fontWeight: '600' }}>Loại</th>
+                          <th style={{ fontWeight: '600' }}>Trạng thái</th>
+                          <th style={{ fontWeight: '600' }}>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rooms.map(r => (
+                          <tr key={r.maPhong} style={{ verticalAlign: 'middle' }}>
+                            <td>
+                              <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                {r.maPhong}
+                              </Badge>
+                            </td>
+                            <td style={{ fontWeight: '500' }}>{r.tenPhong || <span className="text-muted">-</span>}</td>
+                            <td>{r.toaNha || <span className="text-muted">-</span>}</td>
+                            <td>{r.tang ?? <span className="text-muted">-</span>}</td>
+                            <td>{r.sucChua ?? <span className="text-muted">-</span>}</td>
+                            <td>{r.loaiPhong || <span className="text-muted">-</span>}</td>
+                            <td>
+                              <Badge bg={r.trangThai === 'active' ? 'success' : 'secondary'} style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                {r.trangThai || 'active'}
+                              </Badge>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <div className="d-flex gap-2 justify-content-center">
+                                <Button
+                                  variant="outline-warning"
+                                  size="sm"
+                                  onClick={() => handleEditRoom(r)}
+                                  className="shadow-sm"
+                                >
+                                  <FaEdit className="me-1" />
+                                  Sửa
+                                </Button>
+                                <Button
+                                  variant="outline-danger"
+                                  size="sm"
+                                  onClick={() => handleDeleteRoom(r.maPhong)}
+                                  className="shadow-sm"
+                                >
+                                  <FaTrash className="me-1" />
+                                  Xóa
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+
+                  {rooms.length === 0 && (
+                    <div className="text-center py-5">
+                      <FaBuilding size={64} className="text-muted mb-3" />
+                      <Alert variant="info" className="d-inline-block">
+                        Chưa có phòng học nào.
+                      </Alert>
+                    </div>
+                  )}
+
+                  {/* Pagination for Rooms */}
+                  {roomTotalPages > 1 && (
+                    <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                      <div className="text-muted fw-semibold">
+                        Tổng: <span className="text-primary">{roomTotalElements}</span> phòng học
+                      </div>
+                      <Pagination className="mb-0">
+                        <Pagination.Prev 
+                          disabled={roomPage === 0}
+                          onClick={() => setRoomPage(Math.max(0, roomPage - 1))}
+                          className="shadow-sm"
+                        />
+                        {getPaginationItems(roomPage, roomTotalPages).map((item, index) => {
+                          if (item === 'ellipsis-start' || item === 'ellipsis-end') {
+                            return (
+                              <Pagination.Ellipsis key={`ellipsis-${index}`} disabled />
+                            );
+                          }
+                          return (
+                            <Pagination.Item
+                              key={item}
+                              active={item === roomPage}
+                              onClick={() => setRoomPage(item)}
+                              className="shadow-sm"
+                            >
+                              {item + 1}
+                            </Pagination.Item>
+                          );
+                        })}
+                        <Pagination.Next 
+                          disabled={roomPage >= roomTotalPages - 1}
+                          onClick={() => setRoomPage(Math.min(roomTotalPages - 1, roomPage + 1))}
+                          className="shadow-sm"
+                        />
+                      </Pagination>
                     </div>
                   )}
                 </Card.Body>

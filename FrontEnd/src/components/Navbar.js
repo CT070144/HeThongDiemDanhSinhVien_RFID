@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import logo from '../assets/logo.png';
-import { FaHome, FaUsers, FaGraduationCap, FaHistory, FaCog, FaUserCircle, FaSignOutAlt } from 'react-icons/fa';
+import { FaHome, FaUsers, FaGraduationCap, FaHistory, FaCog, FaUserCircle, FaSignOutAlt, FaBuilding } from 'react-icons/fa';
 
 const CustomNavbar = () => {
   const { user, logout } = useAuth();
@@ -21,7 +21,7 @@ const CustomNavbar = () => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <Navbar bg="primary" variant="dark" expand="lg" className="shadow-sm" style={{ borderBottom: '3px solid #0a58ca' }}>
+    <Navbar bg="primary" variant="dark" expand="lg" className="shadow-sm" style={{ position: 'sticky', top: 0, left: 0, right: 0, zIndex: 1000, borderBottom: '3px solid #0a58ca' }}>
       <Container fluid>
         <LinkContainer to="/dashboard">
           <Navbar.Brand className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
@@ -55,7 +55,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHome className="me-2" />
-                <span style={{ fontSize: '22px' }}>Dashboard</span>
+                <span style={{ fontSize: '20px' }}>Dashboard</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/students">
@@ -70,7 +70,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaUsers className="me-2" />
-                <span style={{ fontSize: '22px' }}>Sinh viên</span>
+                <span style={{ fontSize: '20px' }}>Sinh viên</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/lophocphan">
@@ -85,7 +85,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaGraduationCap className="me-2" />
-                <span style={{ fontSize: '22px' }}>Lớp học phần</span>
+                <span style={{ fontSize: '20px' }}>Lớp học phần</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/attendance">
@@ -100,22 +100,37 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHistory className="me-2" />
-                <span style={{ fontSize: '22px' }}>Lịch sử điểm danh</span>
+                <span style={{ fontSize: '20px' }}>Lịch sử điểm danh</span>
               </Nav.Link>
             </LinkContainer>
-            <LinkContainer to="/rfid-reader">
+            <LinkContainer to="/room">
               <Nav.Link 
-                className={`d-flex align-items-center ${isActive('/rfid-reader') ? 'active' : ''}`}
+                className={`d-flex align-items-center ${isActive('/room') ? 'active' : ''}`}
                 style={{ 
                   borderRadius: '0.375rem',
                   padding: '0.5rem 1rem',
-                  fontWeight: isActive('/rfid-reader') ? '600' : '400',
-                  backgroundColor: isActive('/rfid-reader') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  fontWeight: isActive('/room') ? '600' : '400',
+                  backgroundColor: isActive('/room') ? 'rgba(255,255,255,0.15)' : 'transparent',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <FaBuilding className="me-2" />
+                <span style={{ fontSize: '20px' }}>Phòng học</span>
+              </Nav.Link>
+            </LinkContainer>
+            <LinkContainer to="/configuration">
+              <Nav.Link 
+                className={`d-flex align-items-center ${isActive('/configuration') ? 'active' : ''}`}
+                style={{ 
+                  borderRadius: '0.375rem',
+                  padding: '0.5rem 1rem',
+                  fontWeight: isActive('/configuration') ? '600' : '400',
+                  backgroundColor: isActive('/configuration') ? 'rgba(255,255,255,0.15)' : 'transparent',
                   transition: 'all 0.3s ease'
                 }}
               >
                 <FaCog className="me-2" />
-                <span style={{ fontSize: '22px' }}>Thiết lập RFID</span>
+                <span style={{ fontSize: '20px' }}>Thiết lập</span>
               </Nav.Link>
             </LinkContainer>
           </Nav>

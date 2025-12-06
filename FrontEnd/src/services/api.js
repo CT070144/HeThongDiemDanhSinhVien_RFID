@@ -83,4 +83,41 @@ export const deviceAPI = {
   delete: (maThietBi) => api.delete(`/thietbi/${maThietBi}`),
 };
 
+// Room (PhongHoc) API
+export const roomAPI = {
+  getAll: (keyword) => api.get(`/phonghoc${keyword ? `?keyword=${encodeURIComponent(keyword)}` : ''}`),
+  getPaged: (page, size, keyword) => {
+    const params = new URLSearchParams();
+    params.append('page', page);
+    params.append('size', size);
+    if (keyword) params.append('keyword', keyword);
+    return api.get(`/phonghoc/paged?${params.toString()}`);
+  },
+  getOne: (maPhong) => api.get(`/phonghoc/${maPhong}`),
+  create: (data) => api.post('/phonghoc', data),
+  update: (maPhong, data) => api.put(`/phonghoc/${maPhong}`, data),
+  delete: (maPhong) => api.delete(`/phonghoc/${maPhong}`),
+  getRoomsWithStatus: (toaNha, tang, ngay, ca) => {
+    const params = new URLSearchParams();
+    if (toaNha) params.append('toaNha', toaNha);
+    if (tang) params.append('tang', tang);
+    if (ngay) params.append('ngay', ngay);
+    if (ca) params.append('ca', ca);
+    return api.get(`/phonghoc/status?${params.toString()}`);
+  },
+  getRoomDetail: (maPhong, ngay, ca) => {
+    const params = new URLSearchParams();
+    if (ngay) params.append('ngay', ngay);
+    if (ca) params.append('ca', ca);
+    return api.get(`/phonghoc/${maPhong}/detail?${params.toString()}`);
+  },
+  getRoomSchedule: (toaNha, tang, ngay) => {
+    const params = new URLSearchParams();
+    if (toaNha) params.append('toaNha', toaNha);
+    if (tang) params.append('tang', tang);
+    if (ngay) params.append('ngay', ngay);
+    return api.get(`/phonghoc/schedule?${params.toString()}`);
+  },
+};
+
 export default api;

@@ -7,9 +7,10 @@ import Footer from './components/Footer';
 import Login from './pages/Login';
 import StudentManagement from './pages/StudentManagement';
 import AttendanceHistory from './pages/AttendanceHistory';
-import RfidReader from './pages/RfidReader';
+import Configuration from './pages/Configuration';
 import Dashboard from './pages/Dashboard';
 import LopHocPhanManagement from './pages/LopHocPhanManagement';
+import Room from './pages/Room';
 import './App.css';
 
 // Protected Route Component
@@ -62,7 +63,7 @@ function AppContent() {
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={
             <ProtectedRoute>
-              <Dashboard />
+              <Dashboard/>
             </ProtectedRoute>
           } />
           <Route path="/students" element={
@@ -80,9 +81,14 @@ function AppContent() {
               <AttendanceHistory />
             </ProtectedRoute>
           } />
-          <Route path="/rfid-reader" element={
+          <Route path="/configuration" element={
             <ProtectedRoute>
-              <RfidReader />
+              <Configuration />
+            </ProtectedRoute>
+          } />
+          <Route path="/room" element={
+            <ProtectedRoute>
+              <Room />
             </ProtectedRoute>
           } />
         </Routes>

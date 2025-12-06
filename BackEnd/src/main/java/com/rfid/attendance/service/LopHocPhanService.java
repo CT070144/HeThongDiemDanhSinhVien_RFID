@@ -5,6 +5,7 @@ import com.rfid.attendance.entity.LopHocPhan;
 import com.rfid.attendance.entity.SinhVien;
 import com.rfid.attendance.entity.SinhVienLopHocPhan;
 import com.rfid.attendance.repository.LopHocPhanRepository;
+import com.rfid.attendance.repository.PhongHocRepository;
 import com.rfid.attendance.repository.SinhVienLopHocPhanRepository;
 import com.rfid.attendance.repository.SinhVienRepository;
 import org.apache.poi.ss.usermodel.*;
@@ -36,6 +37,9 @@ public class LopHocPhanService {
     
     @Autowired
     private SinhVienLopHocPhanRepository sinhVienLopHocPhanRepository;
+
+    @Autowired
+    private PhongHocRepository phongHocRepository;
     
     @Autowired
     private SinhVienService sinhVienService;
@@ -384,5 +388,111 @@ public class LopHocPhanService {
         
         // Remove relationship
         sinhVienLopHocPhanRepository.deleteByMaSinhVienAndMaLopHocPhan(maSinhVien, maLopHocPhan);
+    }
+    
+    /**
+     * Xử lý file Excel để lấy danh sách sinh viên và thêm vào lớp học phần
+     * Chỉ đọc danh sách sinh viên từ file, không đọc tên lớp học phần
+     * @param file File Excel chứa danh sách sinh viên
+     * @param maLopHocPhan Mã lớp học phần
+     * @param tenLopHocPhan Tên lớp học phần
+     * @return Map chứa danh sách sinh viên đã đọc và thông tin xử lý
+     */
+    @Transactional
+    public Map<String, Object> processStudentsFromExcelForClass(MultipartFile file, String maLopHocPhan, String tenLopHocPhan) throws IOException {
+        Map<String, Object> result = new HashMap<>();
+        List<String> errors = new ArrayList<>();
+        List<String> successes = new ArrayList<>();
+        List<Map<String, String>> students = new ArrayList<>();
+        int studentAddedCount = 0;
+        int newStudentCount = 0;
+        
+        try (InputStream inputStream = file.getInputStream()) {
+            Workbook workbook = WorkbookFactory.create(inputStream);
+            
+            // Chỉ xử lý sheet đầu tiên
+            Sheet sheet = workbook.getSheetAt(0);
+            String sheetName = sheet.getSheetName();
+            
+            // Đọc danh sách sinh viên từ hàng 10 trở đi (index 9)
+            for (int rowIndex = 9; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
+                if (row == null) continue;
+                
+                try {
+                    // Đọc mã sinh viên từ cột B (index 1)
+                    Cell maSinhVienCell = row.getCell(1);
+                    if (maSinhVienCell == null || getCellValueAsString(maSinhVienCell).trim().isEmpty()) {
+                        continue; // Bỏ qua hàng trống
+                    }
+                    
+                    String maSinhVien = getCellValueAsString(maSinhVienCell).trim();
+                    
+                    // Đọc tên sinh viên từ cột C (họ) và D (tên)
+                    Cell hoCell = row.getCell(2);
+                    Cell tenCell = row.getCell(3);
+                    
+                    String ho = getCellValueAsString(hoCell).trim();
+                    String ten = getCellValueAsString(tenCell).trim();
+                    String tenSinhVien = (ho + " " + ten).trim();
+                    
+                    if (tenSinhVien.isEmpty()) {
+                        errors.add("Dòng " + (rowIndex + 1) + ": Tên sinh viên không được để trống");
+                        continue;
+                    }
+                    
+                    // Lưu thông tin sinh viên để preview
+                    Map<String, String> studentInfo = new HashMap<>();
+                    studentInfo.put("maSinhVien", maSinhVien);
+                    studentInfo.put("tenSinhVien", tenSinhVien);
+                    students.add(studentInfo);
+                    
+                    // Tạo hoặc cập nhật sinh viên
+                    SinhVien sinhVien;
+                    Optional<SinhVien> existingSinhVien = sinhVienRepository.findByMaSinhVien(maSinhVien);
+                    
+                    if (existingSinhVien.isPresent()) {
+                        sinhVien = existingSinhVien.get();
+                        // Cập nhật tên nếu khác
+                        if (!sinhVien.getTenSinhVien().equals(tenSinhVien)) {
+                            sinhVien.setTenSinhVien(tenSinhVien);
+                            sinhVienRepository.save(sinhVien);
+                        }
+                    } else {
+                        // Tạo sinh viên mới với RFID tạm thời
+                        String tempRfid = "TEMP_" + maSinhVien + "_" + System.currentTimeMillis();
+                        sinhVien = new SinhVien(maSinhVien, tempRfid, tenSinhVien);
+                        sinhVien = sinhVienRepository.save(sinhVien);
+                        newStudentCount++;
+                    }
+                    
+                    // Thêm sinh viên vào lớp học phần
+                    if (!sinhVienLopHocPhanRepository.existsByMaSinhVienAndMaLopHocPhan(maSinhVien, maLopHocPhan)) {
+                        SinhVienLopHocPhan svlhp = new SinhVienLopHocPhan(maSinhVien, maLopHocPhan);
+                        sinhVienLopHocPhanRepository.save(svlhp);
+                        studentAddedCount++;
+                    }
+                    
+                } catch (Exception e) {
+                    errors.add("Dòng " + (rowIndex + 1) + ": " + e.getMessage());
+                }
+            }
+            
+            successes.add("Đã thêm " + studentAddedCount + " sinh viên vào lớp " + tenLopHocPhan);
+            if (newStudentCount > 0) {
+                successes.add("Đã tạo mới " + newStudentCount + " sinh viên");
+            }
+            
+        } catch (Exception e) {
+            errors.add("Lỗi xử lý file: " + e.getMessage());
+        }
+        
+        result.put("students", students);
+        result.put("successes", successes);
+        result.put("errors", errors);
+        result.put("studentAddedCount", studentAddedCount);
+        result.put("newStudentCount", newStudentCount);
+        
+        return result;
     }
 }

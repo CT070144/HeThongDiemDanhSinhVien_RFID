@@ -6,10 +6,12 @@ import com.rfid.attendance.entity.SinhVien;
 import com.rfid.attendance.service.LopHocPhanService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
 import org.springframework.web.multipart.MultipartFile;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.HashMap;
 import java.util.List;
@@ -77,8 +79,46 @@ public class LopHocPhanController {
         }
     }
     
-    @PostMapping
-    public ResponseEntity<Map<String, Object>> createLopHocPhan(@RequestBody LopHocPhan lopHocPhan) {
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> createLopHocPhan(
+            @RequestPart("lopHocPhan") String lopHocPhanJson,
+            @RequestPart(value = "file", required = false) MultipartFile file) {
+        Map<String, Object> response = new HashMap<>();
+        try {
+            // Parse JSON string to LopHocPhan object
+            ObjectMapper objectMapper = new ObjectMapper();
+            LopHocPhan lopHocPhan = objectMapper.readValue(lopHocPhanJson, LopHocPhan.class);
+            
+            LopHocPhan created = lopHocPhanService.createLopHocPhan(lopHocPhan);
+            
+            // Nếu có file Excel, xử lý danh sách sinh viên
+            if (file != null && !file.isEmpty()) {
+                try {
+                    Map<String, Object> processResult = lopHocPhanService.processStudentsFromExcelForClass(
+                            file, created.getMaLopHocPhan(), created.getTenLopHocPhan());
+                    response.put("students", processResult.get("students"));
+                    response.put("studentAddedCount", processResult.get("studentAddedCount"));
+                    response.put("newStudentCount", processResult.get("newStudentCount"));
+                    response.put("studentSuccesses", processResult.get("successes"));
+                    response.put("studentErrors", processResult.get("errors"));
+                } catch (Exception e) {
+                    response.put("studentErrors", List.of("Lỗi xử lý file Excel: " + e.getMessage()));
+                }
+            }
+            
+            response.put("success", true);
+            response.put("message", "Tạo lớp học phần thành công");
+            response.put("data", created);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
+        }
+    }
+    
+    @PostMapping(value = "/simple", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<Map<String, Object>> createLopHocPhanSimple(@RequestBody LopHocPhan lopHocPhan) {
         Map<String, Object> response = new HashMap<>();
         try {
             LopHocPhan created = lopHocPhanService.createLopHocPhan(lopHocPhan);

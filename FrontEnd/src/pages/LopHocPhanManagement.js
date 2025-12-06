@@ -4,7 +4,7 @@ import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import { exportClassAttendanceMatrix } from '../services/exportExcel';
 import api from '../services/api';
-import { FaFileDownload, FaPlus, FaUpload, FaSearch, FaSync, FaEdit, FaTrash, FaGraduationCap } from "react-icons/fa";
+import { FaFileDownload, FaPlus, FaUpload, FaSearch, FaSync, FaEdit, FaTrash, FaGraduationCap, FaCheckCircle } from "react-icons/fa";
 
 const LopHocPhanManagement = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
@@ -25,6 +25,8 @@ const LopHocPhanManagement = () => {
   const [tkbUploading, setTkbUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [isDraggingImport, setIsDraggingImport] = useState(false);
+  const [isDraggingCaHoc, setIsDraggingCaHoc] = useState(false);
   const [allStudents, setAllStudents] = useState([]);
   const [studentsInClass, setStudentsInClass] = useState([]);
   const [selectedStudentsToAdd, setSelectedStudentsToAdd] = useState([]);
@@ -42,6 +44,9 @@ const LopHocPhanManagement = () => {
     maLopHocPhan: '',
     tenLopHocPhan: ''
   });
+  const [excelFile, setExcelFile] = useState(null);
+  const [previewStudents, setPreviewStudents] = useState([]);
+  const [isPreviewing, setIsPreviewing] = useState(false);
 
   useEffect(() => {
     fetchLopHocPhans();
@@ -155,7 +160,80 @@ const LopHocPhanManagement = () => {
 
   const handleCreate = () => {
     setFormData({ maLopHocPhan: '', tenLopHocPhan: '' });
+    setExcelFile(null);
+    setPreviewStudents([]);
+    setIsPreviewing(false);
     setShowModal(true);
+  };
+  
+  const handleFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setExcelFile(file);
+      previewExcelFile(file);
+    }
+  };
+  
+  const handleDrop = (e) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setExcelFile(file);
+      previewExcelFile(file);
+    } else {
+      toast.error('Vui lòng chọn file Excel (.xlsx hoặc .xls)');
+    }
+  };
+  
+  const handleDragOver = (e) => {
+    e.preventDefault();
+  };
+  
+  const previewExcelFile = (file) => {
+    setIsPreviewing(true);
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        
+        // Đọc từ hàng 10 trở đi (index 9), cột B (index 1) là mã SV, cột C (index 2) là họ, cột D (index 3) là tên
+        const students = [];
+        for (let i = 9; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          if (row && row[1]) { // Có mã sinh viên ở cột B
+            const maSinhVien = String(row[1] || '').trim();
+            const ho = String(row[2] || '').trim();
+            const ten = String(row[3] || '').trim();
+            const tenSinhVien = (ho + ' ' + ten).trim();
+            
+            if (maSinhVien && tenSinhVien) {
+              students.push({ maSinhVien, tenSinhVien });
+            }
+          }
+        }
+        
+        setPreviewStudents(students);
+        if (students.length === 0) {
+          toast.warning('Không tìm thấy sinh viên nào trong file. Vui lòng kiểm tra định dạng file.');
+        } else {
+          toast.success(`Đã đọc được ${students.length} sinh viên từ file`);
+        }
+      } catch (error) {
+        toast.error('Lỗi khi đọc file Excel: ' + error.message);
+        setPreviewStudents([]);
+      } finally {
+        setIsPreviewing(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  
+  const removeFile = () => {
+    setExcelFile(null);
+    setPreviewStudents([]);
   };
 
   const handleEdit = async (lopHocPhan) => {
@@ -192,12 +270,29 @@ const LopHocPhanManagement = () => {
         await api.put(`/lophocphan/${formData.maLopHocPhan}`, formData);
         toast.success('Cập nhật lớp học phần thành công');
       } else {
-        // Create new
-        await api.post('/lophocphan', formData);
-        toast.success('Tạo lớp học phần thành công');
+        // Create new - gửi kèm file nếu có
+        const formDataToSend = new FormData();
+        formDataToSend.append('lopHocPhan', new Blob([JSON.stringify(formData)], { type: 'application/json' }));
+        if (excelFile) {
+          formDataToSend.append('file', excelFile);
+        }
+        
+        const response = await api.post('/lophocphan', formDataToSend, {
+          headers: {
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        if (response.data.studentAddedCount > 0) {
+          toast.success(`Tạo lớp học phần thành công. Đã thêm ${response.data.studentAddedCount} sinh viên từ file Excel.`);
+        } else {
+          toast.success('Tạo lớp học phần thành công');
+        }
       }
       
       setShowModal(false);
+      setExcelFile(null);
+      setPreviewStudents([]);
       fetchLopHocPhans();
     } catch (error) {
       const message = error.response?.data?.message || 'Có lỗi xảy ra';
@@ -233,6 +328,27 @@ const LopHocPhanManagement = () => {
     }
   };
 
+  const handleImportFileDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setImportFile(file);
+    } else {
+      toast.error('Vui lòng chọn file Excel (.xlsx hoặc .xls)');
+    }
+  };
+
+  const handleImportFileDragOver = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(true);
+  };
+
+  const handleImportFileDragLeave = (e) => {
+    e.preventDefault();
+    setIsDraggingImport(false);
+  };
+
   const handleImportFile = async (e) => {
     e.preventDefault();
     if (!importFile) {
@@ -254,6 +370,7 @@ const LopHocPhanManagement = () => {
       setImportResult(response.data);
       toast.success('Import hoàn thành!');
       setShowImportModal(false);
+      setImportFile(null);
       fetchLopHocPhans();
     } catch (error) {
       const message = error.response?.data?.message || 'Có lỗi xảy ra khi import';
@@ -261,6 +378,27 @@ const LopHocPhanManagement = () => {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleCaHocImportDrop = (e) => {
+    e.preventDefault();
+    setIsDraggingCaHoc(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setCaHocImportFile(file);
+    } else {
+      toast.error('Vui lòng chọn file Excel (.xlsx hoặc .xls)');
+    }
+  };
+
+  const handleCaHocImportDragOver = (e) => {
+    e.preventDefault();
+    setIsDraggingCaHoc(true);
+  };
+
+  const handleCaHocImportDragLeave = (e) => {
+    e.preventDefault();
+    setIsDraggingCaHoc(false);
   };
 
   const handleCaHocImportSubmit = async (e) => {
@@ -575,6 +713,9 @@ const LopHocPhanManagement = () => {
     setSelectedStudentsToRemove([]);
     setAddStudentSearchTerm('');
     setRemoveStudentSearchTerm('');
+    setExcelFile(null);
+    setPreviewStudents([]);
+    setIsPreviewing(false);
   };
 
   return (
@@ -816,6 +957,103 @@ const LopHocPhanManagement = () => {
                     required
                   />
                 </Form.Group>
+                
+                {/* File upload section - chỉ hiện khi tạo mới */}
+                {(!formData.maLopHocPhan || !lopHocPhans.some(lhp => lhp.maLopHocPhan === formData.maLopHocPhan)) && (
+                  <>
+                    <Form.Group className="mb-3">
+                      <Form.Label className="fw-semibold d-flex align-items-center">
+                        <FaUpload className="me-2 text-primary" />
+                        Đính kèm file Excel danh sách sinh viên (Tùy chọn)
+                      </Form.Label>
+                      <div
+                        onDrop={handleDrop}
+                        onDragOver={handleDragOver}
+                        style={{
+                          border: '2px dashed #dee2e6',
+                          borderRadius: '0.5rem',
+                          padding: '2rem',
+                          textAlign: 'center',
+                          backgroundColor: excelFile ? '#e7f3ff' : '#f8f9fa',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s ease'
+                        }}
+                        onClick={() => document.getElementById('excel-file-input').click()}
+                      >
+                        <input
+                          id="excel-file-input"
+                          type="file"
+                          accept=".xlsx,.xls"
+                          onChange={handleFileChange}
+                          style={{ display: 'none' }}
+                        />
+                        {excelFile ? (
+                          <div>
+                            <FaCheckCircle className="text-success mb-2" size={32} />
+                            <p className="mb-1 fw-semibold text-success">{excelFile.name}</p>
+                            <p className="text-muted small mb-2">Click để chọn file khác</p>
+                            <Button variant="outline-danger" size="sm" onClick={(e) => { e.stopPropagation(); removeFile(); }}>
+                              <FaTrash className="me-1" />
+                              Xóa file
+                            </Button>
+                          </div>
+                        ) : (
+                          <div>
+                            <FaUpload className="text-primary mb-2" size={32} />
+                            <p className="mb-1 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</p>
+                            <p className="text-muted small">Hỗ trợ file .xlsx, .xls</p>
+                          </div>
+                        )}
+                      </div>
+                    </Form.Group>
+                    
+                    {/* Preview danh sách sinh viên */}
+                    {isPreviewing && (
+                      <div className="text-center py-3">
+                        <Spinner animation="border" variant="primary" />
+                        <p className="mt-2 text-muted">Đang đọc file...</p>
+                      </div>
+                    )}
+                    
+                    {previewStudents.length > 0 && (
+                      <Card className="mb-3 shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                        <Card.Header className="bg-info text-white d-flex justify-content-between align-items-center">
+                          <h6 className="mb-0">
+                            <FaCheckCircle className="me-2" />
+                            Preview: {previewStudents.length} sinh viên
+                          </h6>
+                          <Button variant="light" size="sm" onClick={removeFile}>
+                            <FaTrash className="me-1" />
+                            Xóa
+                          </Button>
+                        </Card.Header>
+                        <Card.Body style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                          <Table striped hover size="sm">
+                            <thead>
+                              <tr>
+                                <th style={{ fontWeight: '600' }}>STT</th>
+                                <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
+                                <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {previewStudents.map((student, index) => (
+                                <tr key={index}>
+                                  <td>{index + 1}</td>
+                                  <td>
+                                    <Badge bg="secondary">{student.maSinhVien}</Badge>
+                                  </td>
+                                  <td>{student.tenSinhVien}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </Card.Body>
+                      </Card>
+                    )}
+                  </>
+                )}
+                
                 <div className="d-flex justify-content-between">
                   <div></div>
                   <div className="d-flex gap-2">
@@ -1089,24 +1327,61 @@ const LopHocPhanManagement = () => {
       </Modal>
 
       {/* Import Modal */}
-      <Modal show={showImportModal} onHide={() => setShowImportModal(false)}>
+      <Modal show={showImportModal} onHide={() => { setShowImportModal(false); setImportFile(null); setIsDraggingImport(false); }}>
         <Modal.Header closeButton>
           <Modal.Title>Import danh sách sinh viên từ Excel</Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleImportFile}>
           <Modal.Body>
             <Form.Group className="mb-3">
-              <Form.Label>Chọn file Excel</Form.Label>
-              <Form.Control
-                type="file"
-                accept=".xls,.xlsx"
-                onChange={(e) => setImportFile(e.target.files[0])}
-                required
-              />
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaUpload className="me-2 text-primary" />
+                Chọn file Excel
+              </Form.Label>
+              <div
+                onDrop={handleImportFileDrop}
+                onDragOver={handleImportFileDragOver}
+                onDragLeave={handleImportFileDragLeave}
+                style={{
+                  border: `2px dashed ${isDraggingImport ? '#0d6efd' : '#dee2e6'}`,
+                  borderRadius: '0.5rem',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  backgroundColor: importFile ? '#e7f3ff' : isDraggingImport ? '#f0f7ff' : '#f8f9fa',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onClick={() => document.getElementById('import-file-input').click()}
+              >
+                <input
+                  id="import-file-input"
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+                {importFile ? (
+                  <div>
+                    <FaCheckCircle className="text-success mb-2" size={32} />
+                    <p className="mb-1 fw-semibold text-success">{importFile.name}</p>
+                    <p className="text-muted small mb-2">Click để chọn file khác</p>
+                    <Button variant="outline-danger" size="sm" onClick={(e) => { e.stopPropagation(); setImportFile(null); }}>
+                      <FaTrash className="me-1" />
+                      Xóa file
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    <FaUpload className="text-primary mb-2" size={32} />
+                    <p className="mb-1 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</p>
+                    <p className="text-muted small">Hỗ trợ file .xlsx, .xls</p>
+                  </div>
+                )}
+              </div>
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowImportModal(false)}>
+            <Button variant="secondary" onClick={() => { setShowImportModal(false); setImportFile(null); setIsDraggingImport(false); }}>
               Hủy
             </Button>
             <Button variant="primary" type="submit" disabled={importing || !importFile}>
@@ -1117,7 +1392,7 @@ const LopHocPhanManagement = () => {
       </Modal>
 
       {/* Import CaHoc Modal */}
-      <Modal show={showCaHocImportModal} onHide={() => setShowCaHocImportModal(false)}>
+      <Modal show={showCaHocImportModal} onHide={() => { setShowCaHocImportModal(false); setCaHocImportFile(null); setIsDraggingCaHoc(false); }}>
         <Modal.Header closeButton>
           <Modal.Title>Import lịch học</Modal.Title>
         </Modal.Header>
@@ -1133,17 +1408,54 @@ const LopHocPhanManagement = () => {
               </div>
             )}
             <Form.Group className="mb-3">
-              <Form.Label>Chọn file Excel</Form.Label>
-              <Form.Control
-                type="file"
-                accept=".xls,.xlsx"
-                onChange={(e) => setCaHocImportFile(e.target.files[0])}
-                required
-              />
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaUpload className="me-2 text-primary" />
+                Chọn file Excel
+              </Form.Label>
+              <div
+                onDrop={handleCaHocImportDrop}
+                onDragOver={handleCaHocImportDragOver}
+                onDragLeave={handleCaHocImportDragLeave}
+                style={{
+                  border: `2px dashed ${isDraggingCaHoc ? '#0d6efd' : '#dee2e6'}`,
+                  borderRadius: '0.5rem',
+                  padding: '2rem',
+                  textAlign: 'center',
+                  backgroundColor: caHocImportFile ? '#e7f3ff' : isDraggingCaHoc ? '#f0f7ff' : '#f8f9fa',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onClick={() => document.getElementById('cahoc-import-file-input').click()}
+              >
+                <input
+                  id="cahoc-import-file-input"
+                  type="file"
+                  accept=".xlsx,.xls"
+                  onChange={(e) => setCaHocImportFile(e.target.files?.[0] || null)}
+                  style={{ display: 'none' }}
+                />
+                {caHocImportFile ? (
+                  <div>
+                    <FaCheckCircle className="text-success mb-2" size={32} />
+                    <p className="mb-1 fw-semibold text-success">{caHocImportFile.name}</p>
+                    <p className="text-muted small mb-2">Click để chọn file khác</p>
+                    <Button variant="outline-danger" size="sm" onClick={(e) => { e.stopPropagation(); setCaHocImportFile(null); }}>
+                      <FaTrash className="me-1" />
+                      Xóa file
+                    </Button>
+                  </div>
+                ) : (
+                  <div>
+                    <FaUpload className="text-primary mb-2" size={32} />
+                    <p className="mb-1 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</p>
+                    <p className="text-muted small">Hỗ trợ file .xlsx, .xls</p>
+                  </div>
+                )}
+              </div>
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
-            <Button variant="secondary" onClick={() => setShowCaHocImportModal(false)}>
+            <Button variant="secondary" onClick={() => { setShowCaHocImportModal(false); setCaHocImportFile(null); setIsDraggingCaHoc(false); }}>
               Hủy
             </Button>
             <Button variant="primary" type="submit" disabled={!caHocImportFile || tkbUploading}>
