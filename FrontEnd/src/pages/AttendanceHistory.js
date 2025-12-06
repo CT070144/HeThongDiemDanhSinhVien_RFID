@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal } from 'react-bootstrap';
 import * as XLSX from 'xlsx';
 import { exportAttendanceToExcel } from '../services/exportExcel';
 import { toast } from 'react-toastify';
@@ -7,6 +7,7 @@ import { attendanceAPI } from '../services/api';
 import api from '../services/api';
 import io  from "socket.io-client";
 import { formatTime } from '../services/format-time';
+import { FaFilter, FaTimes, FaCalendarAlt, FaClock, FaGraduationCap, FaIdCard, FaDoorOpen, FaHistory, FaFileExport, FaChartBar, FaCheckCircle, FaExclamationTriangle, FaClock as FaClockIcon, FaInfoCircle, FaSignOutAlt } from 'react-icons/fa';
 
 
 const AttendanceHistory = () => {
@@ -16,6 +17,7 @@ const AttendanceHistory = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
   const [studentsInLop, setStudentsInLop] = useState([]);
   const socketRef = useRef(null);
+  const notifiedIdsRef = useRef(new Set()); // Track IDs that have been notified
   const [attendanceStats, setAttendanceStats] = useState({
     totalStudents: 0,
     attended: 0,
@@ -35,6 +37,9 @@ const AttendanceHistory = () => {
     phongHoc: '',
     lopHocPhan: ''
   });
+  const [showLopHocPhanModal, setShowLopHocPhanModal] = useState(false);
+  const [lopHocPhanSearch, setLopHocPhanSearch] = useState('');
+  const [selectedLopHocPhanName, setSelectedLopHocPhanName] = useState('');
 
   useEffect(() => {
     loadAttendance();
@@ -77,22 +82,56 @@ const AttendanceHistory = () => {
 
       socketRef.current.on("update-attendance", (result) => {
         console.log("New message received:", result);
-        result = JSON.parse(result);
-      setAttendance((prev) => {
-        // replace if same id exists; otherwise prepend
-        const index = prev.findIndex((r) => r.id === result.id);
-        let next;
-        if (index !== -1) {
-          next = [...prev];
-          next[index] = result;
-        } else {
-          next = [result, ...prev];
+        try {
+          result = typeof result === 'string' ? JSON.parse(result) : result;
+        } catch (e) {
+          console.error("Error parsing result:", e);
+          return;
         }
-        return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-      });
-
-
-
+        
+        setAttendance((prev) => {
+          // Kiểm tra xem đây có phải là bản ghi mới không (chưa có trong danh sách)
+          const isNewRecord = !prev.some(r => r.id === result.id);
+          
+          // replace if same id exists; otherwise prepend
+          const index = prev.findIndex((r) => r.id === result.id);
+          let next;
+          if (index !== -1) {
+            next = [...prev];
+            next[index] = result;
+          } else {
+            next = [result, ...prev];
+          }
+          
+          // Hiển thị thông báo nếu là bản ghi mới và chưa được thông báo
+          if (isNewRecord && result.id && !notifiedIdsRef.current.has(result.id)) {
+            notifiedIdsRef.current.add(result.id);
+            // Sử dụng setTimeout để đảm bảo toast được gọi sau khi state đã cập nhật
+            setTimeout(() => {
+              toast.info(
+                <div>
+                  <div className="fw-bold">Điểm danh mới</div>
+                  <div className="small">
+                    {result.tenSinhVien} ({result.maSinhVien})
+                  </div>
+                  <div className="small text-muted">
+                    {result.phongHoc || 'N/A'} - {new Date(result.createdAt).toLocaleTimeString('vi-VN')}
+                  </div>
+                </div>,
+                {
+                  position: "top-right",
+                  autoClose: 5000,
+                  hideProgressBar: false,
+                  closeOnClick: true,
+                  pauseOnHover: true,
+                  draggable: true,
+                }
+              );
+            }, 0);
+          }
+          
+          return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+        });
       });
     }
 
@@ -218,6 +257,12 @@ const AttendanceHistory = () => {
         new Date(b.createdAt) - new Date(a.createdAt)
       );
       setAttendance(sortedData);
+      // Đánh dấu tất cả các bản ghi đã load là đã được thông báo để tránh hiển thị toast cho dữ liệu cũ
+      sortedData.forEach(record => {
+        if (record.id) {
+          notifiedIdsRef.current.add(record.id);
+        }
+      });
     } catch (error) {
       // tránh spam toast do polling liên tục
       // toast.error('Lỗi khi tải lịch sử điểm danh');
@@ -242,6 +287,7 @@ const AttendanceHistory = () => {
       phongHoc: '',
       lopHocPhan: ''
     });
+    setSelectedLopHocPhanName('');
   };
 
   const getStatusBadge = (trangThai) => {
@@ -295,150 +341,203 @@ const AttendanceHistory = () => {
 
 
   return (
-    <Container>
+    <Container fluid className="py-4">
       <Row>
         <Col>
-          <Card>
-            <Card.Header className="d-flex justify-content-between align-items-center">
-              <h3>Lịch sử điểm danh</h3>
-              <Button variant="outline-success" onClick={exportExcel}>Xuất Excel</Button>
+          <Card className="shadow-sm" style={{ border: 'none' }}>
+            <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
+              <h3 className="mb-0 d-flex align-items-center">
+                <FaHistory className="me-2" />
+                Lịch sử điểm danh
+              </h3>
+              <Button variant="light" onClick={exportExcel} className="shadow-sm">
+                <FaFileExport className="me-2" />
+                Xuất Excel
+              </Button>
             </Card.Header>
-            <Card.Body>
+            <Card.Body className="p-4">
               {/* Bộ lọc */}
-              <Row className="mb-3">
-                <Col md={2}>
-                  <Form.Group>
-                    <Form.Label>Ngày</Form.Label>
-                    <Form.Control
-                      type="date"
-                      name="ngay"
-                      value={filters.ngay}
-                      onChange={handleFilterChange}
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={2}>
-                  <Form.Group>
-                    <Form.Label>Ca học</Form.Label>
-                    <Form.Select
-                      name="ca"
-                      value={filters.ca}
-                      onChange={handleFilterChange}
-                    >
-                      <option value="">Tất cả ca</option>
-                      <option value="1">Ca 1 (07:00-09:25)</option>
-                      <option value="2">Ca 2 (09:35-12:00)</option>
-                      <option value="3">Ca 3 (12:30-14:55)</option>
-                      <option value="4">Ca 4 (15:05-17:30)</option>
-                      <option value="5">Ca 5 (18:00-20:30)</option>
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col md={2}>
-                  <Form.Group>
-                    <Form.Label>Lớp học phần</Form.Label>
-                    <Form.Select
-                      name="lopHocPhan"
-                      value={filters.lopHocPhan}
-                      onChange={handleFilterChange}
-                    >
-                      <option value="">Tất cả lớp</option>
-                      {lopHocPhans.map((lop) => (
-                        <option key={lop.maLopHocPhan} value={lop.maLopHocPhan}>
-                          {lop.tenLopHocPhan}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Form.Group>
-                </Col>
-                <Col md={2}>
-                  <Form.Group>
-                    <Form.Label>Mã sinh viên</Form.Label>
-                    <Form.Control
-                      type="text"
-                      name="maSinhVien"
-                      value={filters.maSinhVien}
-                      onChange={handleFilterChange}
-                      placeholder="Nhập mã sinh viên..."
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={2}>
-                  <Form.Group>
-                    <Form.Label>Phòng học</Form.Label>
-                    <Form.Control
-                      type="text"
-                      name="phongHoc"
-                      value={filters.phongHoc}
-                      onChange={handleFilterChange}
-                      placeholder="Nhập phòng học..."
-                    />
-                  </Form.Group>
-                </Col>
-                <Col md={2} className="d-flex align-items-end">
-                  <Button style={{position: 'relative', top: '-10px'}} variant="outline-secondary" onClick={clearFilters}>
-                    Xóa bộ lọc
-                  </Button>
-                </Col>
-              </Row>
+              <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                <Card.Header className="bg-primary text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.375rem 0.375rem 0 0' }}>
+                  <FaFilter className="me-2" />
+                  <h5 className="mb-0">Bộ lọc tìm kiếm</h5>
+                </Card.Header>
+                <Card.Body className="p-4">
+                  <Row className="g-3">
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaCalendarAlt className="me-2 text-primary" />
+                          Ngày
+                        </Form.Label>
+                        <Form.Control
+                          type="date"
+                          name="ngay"
+                          value={filters.ngay}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaClock className="me-2 text-primary" />
+                          Ca học
+                        </Form.Label>
+                        <Form.Select
+                          name="ca"
+                          value={filters.ca}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        >
+                          <option value="">Tất cả ca</option>
+                          <option value="1">Ca 1 (07:00-09:25)</option>
+                          <option value="2">Ca 2 (09:35-12:00)</option>
+                          <option value="3">Ca 3 (12:30-14:55)</option>
+                          <option value="4">Ca 4 (15:05-17:30)</option>
+                          <option value="5">Ca 5 (18:00-20:30)</option>
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaGraduationCap className="me-2 text-primary" />
+                          Lớp học phần
+                        </Form.Label>
+                        <Button
+                          variant="outline-primary"
+                          className="w-100 shadow-sm text-start d-flex justify-content-between align-items-center"
+                          style={{ borderRadius: '0.375rem' }}
+                          onClick={() => setShowLopHocPhanModal(true)}
+                        >
+                          <span style={{ whiteSpace: 'wrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {selectedLopHocPhanName || 'Chọn lớp học phần'}
+                          </span>
+                        </Button>
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaIdCard className="me-2 text-primary" />
+                          Mã sinh viên
+                        </Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="maSinhVien"
+                          value={filters.maSinhVien}
+                          onChange={handleFilterChange}
+                          placeholder="Nhập mã sinh viên..."
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaDoorOpen className="me-2 text-primary" />
+                          Phòng học
+                        </Form.Label>
+                        <Form.Control
+                          type="text"
+                          name="phongHoc"
+                          value={filters.phongHoc}
+                          onChange={handleFilterChange}
+                          placeholder="Nhập phòng học..."
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2} className="d-flex align-items-end">
+                      <Button 
+                        variant="outline-danger" 
+                        onClick={clearFilters}
+                        className="w-100 shadow-sm"
+                        style={{ 
+                          borderRadius: '0.375rem',
+                          fontWeight: '500',
+                          border: '1px solid #dc3545',
+                          position: 'relative',
+                          top: '-10px'
+                        }}
+                      >
+                        <FaTimes className="me-2 clear-filters" />
+                        Xóa bộ lọc
+                      </Button>
+                    </Col>
+                  </Row>
+                </Card.Body>
+              </Card>
 
               <Row className="mt-4">
                 <Col md={12}>
-                  <Card>
-                    <Card.Header>
-                      <h3>Thống kê</h3>
+                  <Card className="shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                    <Card.Header className="bg-info text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.375rem 0.375rem 0 0' }}>
+                      <FaChartBar className="me-2" />
+                      <h5 className="mb-0">Thống kê</h5>
                     </Card.Header>
-                    <Card.Body>
-                      <Row>
-                        <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-primary">
+                    <Card.Body className="p-4">
+                      <Row className="g-3">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaInfoCircle className="text-primary mb-2" size={24} />
+                            <h4 className="text-primary mb-1 fw-bold">
                               {allFilteredAttendance.length > 0 ? allFilteredAttendance.length : attendance.length}
                             </h4>
-                            <p>Tổng bản ghi</p>
+                            <p className="text-muted small mb-0">Tổng bản ghi</p>
                           </div>
                         </Col>
-                        <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-success">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaCheckCircle className="text-success mb-2" size={24} />
+                            <h4 className="text-success mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.tinhTrangDiemDanh === 'DUNG_GIO' || r.tinhTrangDiemDanh === 'dung_gio').length}
                             </h4>
-                            <p>Đúng giờ</p>
+                            <p className="text-muted small mb-0">Đúng giờ</p>
                           </div>
                         </Col>
-                        <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-warning">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaExclamationTriangle className="text-warning mb-2" size={24} />
+                            <h4 className="text-warning mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.tinhTrangDiemDanh === 'MUON' || r.tinhTrangDiemDanh === 'muon').length}
                             </h4>
-                            <p>Điểm danh muộn</p>
+                            <p className="text-muted small mb-0">Điểm danh muộn</p>
                           </div>
                         </Col>
-                        <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-info">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaClockIcon className="text-info mb-2" size={24} />
+                            <h4 className="text-info mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'DANG_HOC' || r.trangThai === 'dang_hoc').length}
                             </h4>
-                            <p>Đang học</p>
+                            <p className="text-muted small mb-0">Đang học</p>
                           </div>
                         </Col>
-                      <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-success">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaCheckCircle className="text-success mb-2" size={24} />
+                            <h4 className="text-success mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'DA_RA_VE' || r.trangThai === 'da_ra_ve').length}
                             </h4>
-                            <p>Đã ra về</p>
+                            <p className="text-muted small mb-0">Đã ra về</p>
                           </div>
                         </Col>
-                        <Col md={4}>
-                          <div className="text-center">
-                            <h4 className="text-danger">
+                        <Col xs={6} sm={4} md={2}>
+                          <div className="text-center p-3 bg-white rounded shadow-sm" style={{ border: '1px solid #dee2e6' }}>
+                            <FaSignOutAlt className="text-danger mb-2" size={24} />
+                            <h4 className="text-danger mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra').length}
                             </h4>
-                            <p>Không điểm danh ra</p>
+                            <p className="text-muted small mb-0">Không điểm danh ra</p>
                           </div>
                         </Col>
-             
                       </Row>
 
 
@@ -480,58 +579,89 @@ const AttendanceHistory = () => {
               )}
 
               {/* Bảng lịch sử */}
-              <Table style={{minHeight: '500px'}} responsive striped bordered hover>
-                <thead>
-                  <tr>
-                    <th>RFID</th>
-                    <th>Mã sinh viên</th>
-                    <th>Tên sinh viên</th>
-                    <th>Phòng học</th>
-                    <th>Ngày</th>
-                    <th>Ca</th>
-                    <th>Giờ vào</th>
-                    <th>Giờ ra</th>
-                    <th>Tình trạng điểm danh</th>
-                    <th>Trạng thái</th>
-                    
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredAttendance.map((record) => (
-                    <tr key={record.id ?? `${record.rfid || 'rfid'}-${record.createdAt || record.ngay || ''}-${record.ca || ''}`}>
-                      <td>{record.rfid}</td>
-                      <td>{record.maSinhVien}</td>
-                      <td>{record.tenSinhVien}</td>
-                      <td>{record.phongHoc || '-'}</td>
-                      <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
-                      <td>{getCaName(record.ca)}</td>
-                      <td>{formatTime(record.gioVao)}</td>
-                      <td>{formatTime(record.gioRa)}</td>
-                      <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
-                      <td>{getAttendanceStatusBadge(record.trangThai)}</td>
-                    
+              <div className="table-responsive mt-4">
+                <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                  <thead className="table-primary">
+                    <tr>
+                      <th style={{ fontWeight: '600' }}>RFID</th>
+                      <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
+                      <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                      <th style={{ fontWeight: '600' }}>Phòng học</th>
+                      <th style={{ fontWeight: '600' }}>Ngày</th>
+                      <th style={{ fontWeight: '600' }}>Ca</th>
+                      <th style={{ fontWeight: '600' }}>Giờ vào</th>
+                      <th style={{ fontWeight: '600' }}>Giờ ra</th>
+                      <th style={{ fontWeight: '600' }}>Tình trạng điểm danh</th>
+                      <th style={{ fontWeight: '600' }}>Trạng thái</th>
                     </tr>
-                  ))}
-                </tbody>
-              </Table>
+                  </thead>
+                  <tbody>
+                    {filteredAttendance.map((record) => (
+                      <tr key={record.id ?? `${record.rfid || 'rfid'}-${record.createdAt || record.ngay || ''}-${record.ca || ''}`} style={{ verticalAlign: 'middle' }}>
+                        <td>
+                          <code className="bg-light px-2 py-1 rounded">{record.rfid}</code>
+                        </td>
+                        <td>
+                          <Badge bg="secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                            {record.maSinhVien}
+                          </Badge>
+                        </td>
+                        <td style={{ fontWeight: '500' }}>{record.tenSinhVien}</td>
+                        <td>{record.phongHoc || <span className="text-muted">-</span>}</td>
+                        <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
+                        <td>
+                          <Badge bg="info" style={{ fontSize: '0.85rem' }}>
+                            {getCaName(record.ca)}
+                          </Badge>
+                        </td>
+                        <td>{formatTime(record.gioVao) || <span className="text-muted">-</span>}</td>
+                        <td>{formatTime(record.gioRa) || <span className="text-muted">-</span>}</td>
+                        <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
+                        <td>{getAttendanceStatusBadge(record.trangThai)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </div>
 
               {filteredAttendance.length === 0 && (
-                <Alert variant="info">
-                  {filters.lopHocPhan && (!filters.ngay || !filters.ca) 
-                    ? "Vui lòng chọn Ngày và Ca học để xem dữ liệu điểm danh của lớp học phần."
-                    : "Không có dữ liệu điểm danh nào được tìm thấy."
-                  }
-                </Alert>
+                <div className="text-center py-5 mt-4">
+                  <FaHistory size={64} className="text-muted mb-3" />
+                  <Alert variant="info" className="d-inline-block">
+                    {filters.lopHocPhan && (!filters.ngay || !filters.ca) 
+                      ? "Vui lòng chọn Ngày và Ca học để xem dữ liệu điểm danh của lớp học phần."
+                      : "Không có dữ liệu điểm danh nào được tìm thấy."
+                    }
+                  </Alert>
+                </div>
               )}
 
               {/* Pagination */}
-              <div className="d-flex justify-content-between align-items-center mt-3">
-                <div>Trang {page}</div>
-                <div className="d-flex gap-2">
-                  <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage(p => Math.max(1, p - 1))}>Trước</Button>
-                  <Button variant="outline-secondary" disabled={attendance.length <= page * pageSize} onClick={() => setPage(p => p + 1)}>Sau</Button>
+              {filteredAttendance.length > 0 && (
+                <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                  <div className="text-muted fw-semibold">
+                    Trang <span className="text-primary">{page}</span>
+                  </div>
+                  <div className="d-flex gap-2">
+                    <Button 
+                      variant="outline-secondary" 
+                      disabled={page === 1} 
+                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      className="shadow-sm"
+                    >
+                      Trước
+                    </Button>
+                    <Button 
+                      variant="outline-secondary" 
+                      disabled={attendance.length <= page * pageSize} 
+                      onClick={() => setPage(p => p + 1)}
+                      className="shadow-sm"
+                    >
+                      Sau
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Thống kê */}
               
@@ -546,6 +676,99 @@ const AttendanceHistory = () => {
           </Card>
         </Col>
       </Row>
+
+      {/* Modal chọn lớp học phần */}
+      <Modal
+        show={showLopHocPhanModal}
+        onHide={() => setShowLopHocPhanModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Chọn lớp học phần</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Tìm kiếm theo mã hoặc tên lớp học phần</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="Nhập mã lớp học phần hoặc tên lớp..."
+              value={lopHocPhanSearch}
+              onChange={(e) => setLopHocPhanSearch(e.target.value)}
+            />
+          </Form.Group>
+          <div style={{ height: '400px', overflowY: 'auto' }}>
+            <Table hover responsive size="sm" className="align-middle">
+              <thead>
+                <tr>
+                  <th style={{ width: '5%' }}></th>
+                  <th>Mã lớp học phần</th>
+                  <th>Tên lớp học phần</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lopHocPhans
+                  .filter((lop) => {
+                    if (!lopHocPhanSearch.trim()) return true;
+                    const keyword = lopHocPhanSearch.toLowerCase();
+                    return (
+                      lop.maLopHocPhan.toLowerCase().includes(keyword) ||
+                      (lop.tenLopHocPhan || '').toLowerCase().includes(keyword)
+                    );
+                  })
+                  .map((lop) => (
+                    <tr
+                      key={lop.maLopHocPhan}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setFilters((prev) => ({
+                          ...prev,
+                          lopHocPhan: lop.maLopHocPhan,
+                        }));
+                        setSelectedLopHocPhanName(lop.tenLopHocPhan);
+                        setShowLopHocPhanModal(false);
+                      }}
+                    >
+                      <td>
+                        <Form.Check
+                          type="radio"
+                          name="lopHocPhanRadio"
+                          checked={filters.lopHocPhan === lop.maLopHocPhan}
+                          readOnly
+                        />
+                      </td>
+                      <td>
+                        <Badge bg="primary">{lop.maLopHocPhan}</Badge>
+                      </td>
+                      <td>{lop.tenLopHocPhan}</td>
+                    </tr>
+                  ))}
+                {lopHocPhans.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="text-center text-muted py-3">
+                      Chưa có lớp học phần nào
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="outline-secondary"
+            onClick={() => {
+              setFilters((prev) => ({ ...prev, lopHocPhan: '' }));
+              setSelectedLopHocPhanName('');
+            }}
+          >
+            Xóa lựa chọn
+          </Button>
+          <Button variant="secondary" onClick={() => setShowLopHocPhanModal(false)}>
+            Đóng
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </Container>
   );
 };

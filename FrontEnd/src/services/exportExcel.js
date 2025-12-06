@@ -212,6 +212,7 @@ export function exportClassAttendanceMatrix({
   headers.push('Tổng muộn');
   headers.push('Tổng vắng');
   headers.push('Tổng tham gia');
+  headers.push('Đánh giá');
 
   // Index attendance by key: maSinhVien|ngay|ca
   const attIndex = new Map();
@@ -249,6 +250,12 @@ export function exportClassAttendanceMatrix({
     row.push(lateCount);
     row.push(absentCount);
     row.push(participated);
+    
+    // Tính đánh giá: nếu vắng quá 25% tổng số buổi học thì "Không đủ điều kiện/Cấm thi"
+    const absentPercentage = totalSessions > 0 ? absentCount / totalSessions : 0;
+    const danhGia = absentPercentage > 0.25 ? 'Không đủ điều kiện/Cấm thi' : 'Đủ điều kiện';
+    row.push(danhGia);
+    
     rows.push(row);
   });
 
@@ -261,7 +268,8 @@ export function exportClassAttendanceMatrix({
     ...sessionHeaders.map(() => ({ width: 20 })),
     { width: 12 },  // Tổng muộn
     { width: 12 },  // Tổng vắng
-    { width: 14 }   // Tổng tham gia
+    { width: 14 },  // Tổng tham gia
+    { width: 25 }   // Đánh giá
   ];
   ws['!cols'] = cols;
 

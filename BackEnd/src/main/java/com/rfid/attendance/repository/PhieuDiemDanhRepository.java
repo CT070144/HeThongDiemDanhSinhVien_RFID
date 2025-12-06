@@ -46,6 +46,13 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = CURRENT_DATE ORDER BY p.ca ASC, p.createdAt DESC")
     List<PhieuDiemDanh> findTodayAttendance();
 
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE " +
+            "(:startDate IS NULL OR p.ngay >= :startDate) AND " +
+            "(:endDate IS NULL OR p.ngay <= :endDate) " +
+            "ORDER BY p.ngay DESC, p.ca ASC, p.createdAt DESC")
+    List<PhieuDiemDanh> findByDateRange(@Param("startDate") LocalDate startDate,
+                                         @Param("endDate") LocalDate endDate);
+
     Page<PhieuDiemDanh> findAll(Pageable pageable);
     @Query("SELECT p FROM PhieuDiemDanh p ORDER BY p.ngay DESC, p.ca ASC, p.createdAt DESC")
     Page<PhieuDiemDanh> findAllPaged(Pageable pageable);

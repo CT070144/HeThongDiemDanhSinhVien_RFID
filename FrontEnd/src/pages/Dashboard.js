@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback,useRef } from 'react';
-import { Container, Row, Col, Card, Table, Button, Alert, Badge } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Alert, Badge, Dropdown } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
+import { FaUsers, FaCalendarCheck, FaExclamationTriangle, FaClock, FaChartBar, FaChartPie, FaChartLine, FaSync, FaFilter } from 'react-icons/fa';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -50,17 +51,121 @@ const Dashboard = () => {
     attendanceStatus: {},
     weeklyAttendance: []
   });
+  const [dateFilterType, setDateFilterType] = useState('7days');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+
+  const computeDateRange = useCallback(() => {
+    const today = new Date();
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    let start = new Date(end);
+
+    const format = (d) => d.toISOString().split('T')[0];
+
+    switch (dateFilterType) {
+      case 'today':
+        break;
+      case 'yesterday':
+        start.setDate(start.getDate() - 1);
+        end.setDate(end.getDate() - 1);
+        break;
+      case '7days':
+        start.setDate(start.getDate() - 6);
+        break;
+      case '30days':
+        start.setDate(start.getDate() - 29);
+        break;
+      case 'thisWeek': {
+        const day = end.getDay() || 7; // Mon=1..Sun=7
+        start.setDate(end.getDate() - (day - 1));
+        break;
+      }
+      case 'lastWeek': {
+        const day = end.getDay() || 7;
+        end.setDate(end.getDate() - day);
+        start = new Date(end);
+        start.setDate(end.getDate() - 6);
+        break;
+      }
+      case 'thisMonth':
+        start = new Date(end.getFullYear(), end.getMonth(), 1);
+        break;
+      case 'lastMonth': {
+        const year = end.getFullYear();
+        const month = end.getMonth() - 1;
+        start = new Date(year, month, 1);
+        end.setFullYear(year, month + 1, 0);
+        break;
+      }
+      case 'thisYear':
+        start = new Date(end.getFullYear(), 0, 1);
+        break;
+      case 'lastYear':
+        start = new Date(end.getFullYear() - 1, 0, 1);
+        end.setFullYear(end.getFullYear() - 1, 11, 31);
+        break;
+      case 'custom':
+        if (customStartDate && customEndDate) {
+          return { startDate: customStartDate, endDate: customEndDate };
+        }
+        return { startDate: null, endDate: null };
+      default:
+        break;
+    }
+
+    return { startDate: format(start), endDate: format(end) };
+  }, [dateFilterType, customStartDate, customEndDate]);
+
+  const getDateFilterLabel = () => {
+    const labels = {
+      today: 'Hôm nay',
+      yesterday: 'Hôm qua',
+      '7days': '7 ngày qua',
+      '30days': '30 ngày qua',
+      thisWeek: 'Tuần này',
+      lastWeek: 'Tuần trước',
+      thisMonth: 'Tháng này',
+      lastMonth: 'Tháng trước',
+      thisYear: 'Năm nay',
+      lastYear: 'Năm trước',
+      custom: 'Tùy chọn',
+    };
+
+    const { startDate, endDate } = computeDateRange();
+    const label = labels[dateFilterType] || 'Khoảng thời gian';
+
+    if (!startDate || !endDate) {
+      return label;
+    }
+
+    const fmt = (d) => {
+      const [y, m, day] = d.split('-');
+      return `${day}/${m}/${y}`;
+    };
+
+    if (startDate === endDate) {
+      return `${label} (${fmt(startDate)})`;
+    }
+
+    return `${label} (${fmt(startDate)} - ${fmt(endDate)})`;
+  };
 
   const loadDashboardData = useCallback(async () => {
     try {
       setLoading(true);
+      const { startDate, endDate } = computeDateRange();
       
       // Load students count
       const studentsResponse = await studentAPI.getAll();
       const totalStudents = studentsResponse.data.length;
 
-      // Load today's attendance
-      const attendanceResponse = await attendanceAPI.getToday();
+      // Load attendance by date range
+      let attendanceResponse;
+      if (dateFilterType === 'today') {
+        attendanceResponse = await attendanceAPI.getToday();
+      } else {
+        attendanceResponse = await attendanceAPI.getByDateRange(startDate, endDate);
+      }
       const todayAttendance = attendanceResponse.data;
       todayAttendance.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -90,11 +195,11 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [computeDateRange, dateFilterType]);
 
   useEffect(() => {
     loadDashboardData();
-  }, []);
+  }, [loadDashboardData]);
   
   useEffect(() => {
     // Initialize socket connection only once
@@ -332,70 +437,221 @@ const Dashboard = () => {
   };
 
   return (
-    <Container>
+    <Container fluid className="py-4" style={{ maxWidth: '88%' }}>
       <Row>
         <Col>
-          <h2 style={{marginTop: '10px'}} className="mb-4">Dashboard - Hệ thống điểm danh RFID</h2>
+          <Row className="mb-3 align-items-center justify-content-between">
+            <Col>
+              <h2 className="mb-0 d-flex align-items-center">
+                <FaChartBar className="me-2 text-primary" />
+                Dashboard - Hệ thống điểm danh RFID
+              </h2>
+            </Col>
+            <Col xs="auto">
+              <Dropdown align="end">
+                <Dropdown.Toggle
+                  variant="outline-primary"
+                  style={
+                    {
+                      transition: 'all 0.2s ease'
+                    }
+                  }
+                  className="d-flex align-items-center"
+                  id="date-filter-toggle"
+                >
+                  <FaCalendarCheck className="me-2" />
+                  <span>{getDateFilterLabel()}</span>
+                </Dropdown.Toggle>
+                <Dropdown.Menu className="p-3" style={{ minWidth: '420px' }}>
+                  <div className="mb-3">
+                    <Row className="g-2">
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'today' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('today')}
+                        >
+                          Hôm nay
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'yesterday' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('yesterday')}
+                        >
+                          Hôm qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === '7days' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('7days')}
+                        >
+                          7 ngày qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === '30days' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('30days')}
+                        >
+                          30 ngày qua
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastWeek' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastWeek')}
+                        >
+                          Tuần trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisWeek' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisWeek')}
+                        >
+                          Tuần này
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastMonth' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastMonth')}
+                        >
+                          Tháng trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisMonth' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisMonth')}
+                        >
+                          Tháng này
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'lastYear' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('lastYear')}
+                        >
+                          Năm trước
+                        </Button>
+                      </Col>
+                      <Col xs={6}>
+                        <Button
+                          variant={dateFilterType === 'thisYear' ? 'primary' : 'outline-secondary'}
+                          className="w-100"
+                          onClick={() => setDateFilterType('thisYear')}
+                        >
+                          Năm nay
+                        </Button>
+                      </Col>
+                    </Row>
+                  </div>
+
+                  <Button
+                    variant={dateFilterType === 'custom' ? 'primary' : 'outline-secondary'}
+                    className="w-100 mb-3"
+                    onClick={() => setDateFilterType('custom')}
+                  >
+                    Tùy chọn
+                  </Button>
+
+                  {dateFilterType === 'custom' && (
+                    <Row className="g-2 mb-3">
+                      <Col xs={6}>
+                        <label className="fw-semibold mb-1">Từ ngày</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={customStartDate}
+                          onChange={(e) => setCustomStartDate(e.target.value)}
+                        />
+                      </Col>
+                      <Col xs={6}>
+                        <label className="fw-semibold mb-1">Đến ngày</label>
+                        <input
+                          type="date"
+                          className="form-control"
+                          value={customEndDate}
+                          onChange={(e) => setCustomEndDate(e.target.value)}
+                        />
+                      </Col>
+                    </Row>
+                  )}
+                </Dropdown.Menu>
+              </Dropdown>
+            </Col>
+          </Row>
           
           {/* Thống kê tổng quan */}
-          <Row className="mb-4">
-            <Col md={3}>
-              <Card className="text-center h-100">
-                <Card.Body className="d-flex flex-column justify-content-center">
-                  <div className="mb-2">
-                    <i className="fas fa-users fa-3x text-primary"></i>
+          <Row className="mb-4 g-3">
+            <Col xs={12} sm={6} md={3}>
+              <Card className="text-center h-100 shadow-sm" style={{ border: '2px solid #0d6efd', borderRadius: '0.5rem' }}>
+                <Card.Body className="d-flex flex-column justify-content-center p-4">
+                  <div className="mb-3">
+                    <FaUsers size={48} className="text-primary" />
                   </div>
-                  <h2 className="text-primary mb-1">{stats.totalStudents}</h2>
-                  <p className="mb-0 text-muted">Tổng số sinh viên</p>
+                  <h2 className="text-primary mb-2 fw-bold">{stats.totalStudents}</h2>
+                  <p className="mb-0 text-muted fw-semibold">Tổng số sinh viên</p>
                 </Card.Body>
               </Card>
             </Col>
-            <Col md={3}>
-              <Card className="text-center h-100">
-                <Card.Body className="d-flex flex-column justify-content-center">
-                  <div className="mb-2">
-                    <i className="fas fa-calendar-check fa-3x text-success"></i>
+            <Col xs={12} sm={6} md={3}>
+              <Card className="text-center h-100 shadow-sm" style={{ border: '2px solid #28a745', borderRadius: '0.5rem' }}>
+                <Card.Body className="d-flex flex-column justify-content-center p-4">
+                  <div className="mb-3">
+                    <FaCalendarCheck size={48} className="text-success" />
                   </div>
-                  <h2 className="text-success mb-1">{stats.todayAttendance}</h2>
-                  <p className="mb-0 text-muted">Điểm danh hôm nay</p>
+                  <h2 className="text-success mb-2 fw-bold">{stats.todayAttendance}</h2>
+                  <p className="mb-0 text-muted fw-semibold">Điểm danh</p>
                 </Card.Body>
               </Card>
             </Col>
-            <Col md={3}>
-              <Card className="text-center h-100">
-                <Card.Body className="d-flex flex-column justify-content-center">
-                  <div className="mb-2">
-                    <i className="fas fa-exclamation-triangle fa-3x text-warning"></i>
+            <Col xs={12} sm={6} md={3}>
+              <Card className="text-center h-100 shadow-sm" style={{ border: '2px solid #ffc107', borderRadius: '0.5rem' }}>
+                <Card.Body className="d-flex flex-column justify-content-center p-4">
+                  <div className="mb-3">
+                    <FaExclamationTriangle size={48} className="text-warning" />
                   </div>
-                  <h2 className="text-warning mb-1">{stats.unprocessedRfids}</h2>
-                  <p className="mb-0 text-muted">RFID chưa xử lý</p>
+                  <h2 className="text-warning mb-2 fw-bold">{stats.unprocessedRfids}</h2>
+                  <p className="mb-0 text-muted fw-semibold">RFID chưa xử lý</p>
                 </Card.Body>
               </Card>
             </Col>
-            <Col md={3}>
-              <Card className="text-center h-100">
-                <Card.Body className="d-flex flex-column justify-content-center">
-                  <div className="mb-2">
-                    <i className="fas fa-clock fa-3x text-info"></i>
+            <Col xs={12} sm={6} md={3}>
+              <Card className="text-center h-100 shadow-sm" style={{ border: '2px solid #17a2b8', borderRadius: '0.5rem' }}>
+                <Card.Body className="d-flex flex-column justify-content-center p-4">
+                  <div className="mb-3">
+                    <FaClock size={48} className="text-info" />
                   </div>
-                  <h5 className="text-info mb-1">{getCaName(stats.currentCa)}</h5>
-                  <p className="mb-0 text-muted">Ca hiện tại</p>
+                  <h5 className="text-info mb-2 fw-bold">{getCaName(stats.currentCa)}</h5>
+                  <p className="mb-0 text-muted fw-semibold">Ca hiện tại</p>
                 </Card.Body>
               </Card>
             </Col>
           </Row>
 
           {/* Biểu đồ thống kê */}
-          <Row className="mb-4">
+          <Row className="mb-4 g-3">
             <Col md={6}>
-              <Card className="h-100">
-                <Card.Header>
-                  <h5 className="mb-0">
-                    <i className="fas fa-chart-bar me-2 text-primary"></i>
+              <Card className="h-100 shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-primary text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaChartBar className="me-2" />
                     Điểm danh theo ca học
                   </h5>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   <div style={{ height: '300px' }}>
                     <Bar 
                       data={attendanceByCaChartData} 
@@ -415,14 +671,14 @@ const Dashboard = () => {
               </Card>
             </Col>
             <Col md={6}>
-              <Card className="h-100">
-                <Card.Header>
-                  <h5 className="mb-0">
-                    <i className="fas fa-chart-pie me-2 text-success"></i>
+              <Card className="h-100 shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-success text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaChartPie className="me-2" />
                     Trạng thái điểm danh
                   </h5>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   <div style={{ height: '300px' }}>
                     <Doughnut 
                       data={attendanceStatusChartData} 
@@ -446,14 +702,14 @@ const Dashboard = () => {
           {/* Biểu đồ theo giờ */}
           <Row className="mb-4">
             <Col md={12}>
-              <Card>
-                <Card.Header>
-                  <h5 className="mb-0">
-                    <i className="fas fa-chart-line me-2 text-info"></i>
+              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-info text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h5 className="mb-0 d-flex align-items-center">
+                    <FaChartLine className="me-2" />
                     Điểm danh theo giờ trong ngày
                   </h5>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   <div style={{ height: '400px' }}>
                     <Line 
                       data={attendanceByHourChartData} 
@@ -492,59 +748,75 @@ const Dashboard = () => {
           {/* Điểm danh hôm nay */}
           <Row>
             <Col>
-              <Card>
-                <Card.Header className="d-flex justify-content-between align-items-center">
-                  <h4>Điểm danh hôm nay</h4>
-                  <Button variant="outline-primary" onClick={loadDashboardData} disabled={loading}>
+              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-secondary text-white d-flex justify-content-between align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h4 className="mb-0">Điểm danh theo khoảng thời gian</h4>
+                  <Button variant="light" onClick={loadDashboardData} disabled={loading} className="shadow-sm">
+                    <FaSync className={`me-2 ${loading ? 'fa-spin' : ''}`} />
                     {loading ? 'Đang tải...' : 'Làm mới'}
                   </Button>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   {todayAttendance.length > 0 ? (
-                    <Table responsive striped bordered hover>
-                      <thead>
-                        <tr>
-                          <th>RFID</th>
-                          <th>Mã sinh viên</th>
-                          <th>Tên sinh viên</th>
-                          <th>Ca</th>
-                          <th>Giờ vào</th>
-                          <th>Giờ ra</th>
-                          <th>Trạng thái</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {todayAttendance
-                          .slice((page - 1) * pageSize, page * pageSize)
-                          .map((record) => (
-                          <tr key={record.id}>
-                            <td>{record.rfid}</td>
-                            <td>{record.maSinhVien}</td>
-                            <td>{record.tenSinhVien}</td>
-                            <td>{getCaName(record.ca)}</td>
-                            <td>{formatTime(record.gioVao)}</td>
-                            <td>{formatTime(record.gioRa)}</td>
-                            <td>{getStatusBadge(record.trangThai)}</td>
+                    <div className="table-responsive">
+                      <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                        <thead className="table-secondary">
+                          <tr>
+                            <th style={{ fontWeight: '600' }}>RFID</th>
+                            <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
+                            <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                            <th style={{ fontWeight: '600' }}>Ca</th>
+                            <th style={{ fontWeight: '600' }}>Giờ vào</th>
+                            <th style={{ fontWeight: '600' }}>Giờ ra</th>
+                            <th style={{ fontWeight: '600' }}>Trạng thái</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                        </thead>
+                        <tbody>
+                          {todayAttendance
+                            .slice((page - 1) * pageSize, page * pageSize)
+                            .map((record) => (
+                            <tr key={record.id} style={{ verticalAlign: 'middle' }}>
+                              <td>
+                                <code className="bg-light px-2 py-1 rounded">{record.rfid}</code>
+                              </td>
+                              <td>
+                                <Badge bg="secondary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                  {record.maSinhVien}
+                                </Badge>
+                              </td>
+                              <td style={{ fontWeight: '500' }}>{record.tenSinhVien}</td>
+                              <td>
+                                <Badge bg="info" style={{ fontSize: '0.85rem' }}>
+                                  {getCaName(record.ca)}
+                                </Badge>
+                              </td>
+                              <td>{formatTime(record.gioVao) || <span className="text-muted">-</span>}</td>
+                              <td>{formatTime(record.gioRa) || <span className="text-muted">-</span>}</td>
+                              <td>{getStatusBadge(record.trangThai)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </Table>
+                    </div>
                   ) : (
-                    <Alert variant="info">
+                    <Alert variant="info" className="mb-0">
                       Chưa có điểm danh nào hôm nay.
                     </Alert>
                   )}
                   {todayAttendance.length > 0 && (
-                    <div className="d-flex justify-content-between align-items-center mt-3">
-                      <div>Trang {page}</div>
+                    <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+                      <div className="text-muted fw-semibold">
+                        Trang <span className="text-primary">{page}</span>
+                      </div>
                       <div className="d-flex gap-2">
-                        <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>
+                        <Button variant="outline-secondary" disabled={page === 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="shadow-sm">
                           Trước
                         </Button>
                         <Button
                           variant="outline-secondary"
                           disabled={todayAttendance.length <= page * pageSize}
                           onClick={() => setPage((p) => p + 1)}
+                          className="shadow-sm"
                         >
                           Sau
                         </Button>
@@ -559,32 +831,36 @@ const Dashboard = () => {
           {/* Hướng dẫn sử dụng */}
           <Row className="mt-4">
             <Col>
-              <Card>
-                <Card.Header>
-                  <h4>Hướng dẫn sử dụng hệ thống</h4>
+              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
+                <Card.Header className="bg-dark text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h4 className="mb-0">Hướng dẫn sử dụng hệ thống</h4>
                 </Card.Header>
-                <Card.Body>
+                <Card.Body className="p-4">
                   <Row>
                     <Col md={6}>
-                      <h5>Quản lý sinh viên:</h5>
-                      <ul>
-                        <li>Thêm, sửa, xóa thông tin sinh viên</li>
-                        <li>Tìm kiếm sinh viên theo mã hoặc tên</li>
-                        <li>Mỗi sinh viên có RFID duy nhất</li>
-                      </ul>
+                      <div className="p-3 bg-light rounded mb-3" style={{ border: '1px solid #dee2e6' }}>
+                        <h5 className="text-primary mb-3">Quản lý sinh viên:</h5>
+                        <ul className="mb-0">
+                          <li>Thêm, sửa, xóa thông tin sinh viên</li>
+                          <li>Tìm kiếm sinh viên theo mã hoặc tên</li>
+                          <li>Mỗi sinh viên có RFID duy nhất</li>
+                        </ul>
+                      </div>
                     </Col>
                     <Col md={6}>
-                      <h5>Điểm danh:</h5>
-                      <ul>
-                        <li>ESP32 tự động đọc thẻ RFID</li>
-                        <li>Hệ thống tự động xác định ca học</li>
-                        <li>Theo dõi trạng thái: vào, ra, muộn</li>
-                      </ul>
+                      <div className="p-3 bg-light rounded mb-3" style={{ border: '1px solid #dee2e6' }}>
+                        <h5 className="text-success mb-3">Điểm danh:</h5>
+                        <ul className="mb-0">
+                          <li>ESP32 tự động đọc thẻ RFID</li>
+                          <li>Hệ thống tự động xác định ca học</li>
+                          <li>Theo dõi trạng thái: vào, ra, muộn</li>
+                        </ul>
+                      </div>
                     </Col>
                   </Row>
                   <Row className="mt-3">
                     <Col md={12}>
-                      <Alert variant="success">
+                      <Alert variant="success" className="mb-0" style={{ border: '1px solid #28a745' }}>
                         <strong>Lưu ý:</strong> Hệ thống tự động cập nhật dữ liệu real-time. 
                         Khi có sinh viên điểm danh, thông tin sẽ hiển thị ngay lập tức trên dashboard.
                       </Alert>

@@ -53,6 +53,13 @@ export const studentAPI = {
 export const attendanceAPI = {
   getAll: () => api.get('/attendance'),
   getToday: () => api.get('/attendance/today'),
+  getByDateRange: (startDate, endDate) => {
+    const params = new URLSearchParams();
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    const query = params.toString();
+    return api.get(`/attendance/range${query ? `?${query}` : ''}`);
+  },
   getByFilters: (ngay, ca, maSinhVien, phongHoc) => {
     const params = new URLSearchParams();
     if (ngay) params.append('ngay', ngay);
