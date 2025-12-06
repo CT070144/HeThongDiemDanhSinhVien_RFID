@@ -2,8 +2,10 @@ package com.rfid.attendance.service;
 
 import com.rfid.attendance.entity.CaHoc;
 import com.rfid.attendance.entity.LopHocPhan;
+import com.rfid.attendance.entity.PhongHoc;
 import com.rfid.attendance.repository.CaHocRepository;
 import com.rfid.attendance.repository.LopHocPhanRepository;
+import com.rfid.attendance.repository.PhongHocRepository;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.springframework.stereotype.Service;
@@ -26,9 +28,12 @@ public class CaHocImportService {
     private final CaHocRepository caHocRepository;
     private final LopHocPhanRepository lopHocPhanRepository;
 
-    public CaHocImportService(CaHocRepository caHocRepository, LopHocPhanRepository lopHocPhanRepository) {
+    private final PhongHocRepository phongHocRepository;
+
+    public CaHocImportService(CaHocRepository caHocRepository, LopHocPhanRepository lopHocPhanRepository, PhongHocRepository phongHocRepository) {
         this.caHocRepository = caHocRepository;
         this.lopHocPhanRepository = lopHocPhanRepository;
+        this.phongHocRepository = phongHocRepository;
     }
 
     public Map<String, Object> importCaHocFromExcel(MultipartFile file) throws Exception {
@@ -169,6 +174,7 @@ public class CaHocImportService {
             case "7->9" -> 3;
             case "10->12" -> 4;
             case "13->16" -> 5;
+            case "13->15" -> 5;
             default -> null;
         };
     }
@@ -226,11 +232,34 @@ public class CaHocImportService {
     private void ensureLopHocPhanExists(String tenLopHocPhan, String giangVien, String phongHoc, String hinhThucHoc) {
         String baseCode = com.rfid.attendance.util.LopHocPhanCodeUtil.generateMaLopHocPhan(tenLopHocPhan);
         if (tenLopHocPhan == null || tenLopHocPhan.isBlank()) return;
+        String input = phongHoc == null?"":phongHoc;
+        String[] parts = input.split("-");
+        if(parts.length == 2){
+        if(!phongHocRepository.existsById(phongHoc)){
+            try{
+            String phong = parts[0]; // 504
+            String toa = parts[1];   // TA1
+            int tang = Integer.parseInt(String.valueOf(parts[0].charAt(0)));
+            PhongHoc ph = PhongHoc.builder()
+                    .maPhong(phongHoc)
+                    .toaNha(toa)
+                    .tenPhong(phong)
+                    .tang(tang)
+                    .build();
+            phongHocRepository.save(ph);
+
+            }
+            catch (Exception ex){
+                throw new RuntimeException(ex.getMessage());
+            }
+
+        }}
         if (lopHocPhanRepository.existsByMaLopHocPhan(baseCode)) return;
         LopHocPhan lhp = new LopHocPhan(baseCode, tenLopHocPhan);
         lhp.setGiangVien(giangVien);
         lhp.setPhongHoc(phongHoc);
         lhp.setHinhThucHoc(hinhThucHoc);
+
         lopHocPhanRepository.save(lhp);
     }
 
