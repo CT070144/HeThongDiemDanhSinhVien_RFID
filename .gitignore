@@ -5,7 +5,7 @@ FrontEnd/build/
 # IDE settings
 .idea/
 BackEnd/.idea/
-
+BackEnd/src/main/resources/
 # Build outputs
 target/
 BackEnd/target/
