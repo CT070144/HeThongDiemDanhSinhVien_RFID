@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Dropdown, Tabs, Tab, Spinner } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { roomAPI, attendanceAPI } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 import { FaBuilding, FaDoorOpen, FaUsers, FaCalendarCheck, FaClock, FaFileDownload, FaFilter, FaSearch, FaEye, FaCheckCircle, FaTimesCircle } from 'react-icons/fa';
 import * as XLSX from 'xlsx';
 
 const Room = () => {
+  const { notify } = useNotification();
   // State cho phòng học
   const [rooms, setRooms] = useState([]);
   const [filteredRooms, setFilteredRooms] = useState([]);
@@ -106,7 +107,7 @@ const Room = () => {
       setFilteredRooms(response.data);
     } catch (error) {
       console.error('Error loading rooms:', error);
-      toast.error('Không thể tải danh sách phòng học');
+      notify.error('Không thể tải danh sách phòng học');
       setRooms([]);
       setFilteredRooms([]);
     } finally {
@@ -127,7 +128,7 @@ const Room = () => {
       setScheduleData(response.data);
     } catch (error) {
       console.error('Error loading schedule:', error);
-      toast.error('Không thể tải lịch sử dụng phòng học');
+      notify.error('Không thể tải lịch sử dụng phòng học');
       setScheduleData([]);
     } finally {
       setScheduleLoading(false);
@@ -185,7 +186,7 @@ const Room = () => {
       setShowDetailModal(true);
     } catch (error) {
       console.error('Error loading room detail:', error);
-      toast.error('Không thể tải chi tiết phòng học');
+      notify.error('Không thể tải chi tiết phòng học');
     } finally {
       setLoading(false);
     }
@@ -207,7 +208,7 @@ const Room = () => {
           dataToExport = response.data;
         } catch (error) {
           console.error('Error loading schedule for export:', error);
-          toast.error('Không thể tải dữ liệu lịch học để xuất Excel');
+          notify.error('Không thể tải dữ liệu lịch học để xuất Excel');
           return;
         } finally {
           setScheduleLoading(false);
@@ -215,7 +216,7 @@ const Room = () => {
       }
 
       if (!dataToExport || dataToExport.length === 0) {
-        toast.warning('Không có dữ liệu để xuất Excel');
+        notify.warning('Không có dữ liệu để xuất Excel');
         return;
       }
 
@@ -408,10 +409,10 @@ const Room = () => {
       const filename = `LichSuDungPhongHoc_${dateStr}.xlsx`;
       
       XLSX.writeFile(wb, filename);
-      toast.success(`Xuất Excel thành công! Đã tạo ${Object.keys(groupedByBuilding).length} sheet.`);
+      notify.success(`Xuất Excel thành công! Đã tạo ${Object.keys(groupedByBuilding).length} sheet.`);
     } catch (error) {
       console.error('Error exporting Excel:', error);
-      toast.error('Lỗi khi xuất Excel: ' + error.message);
+      notify.error('Lỗi khi xuất Excel: ' + error.message);
     }
   };
 

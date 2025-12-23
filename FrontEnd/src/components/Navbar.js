@@ -3,7 +3,7 @@ import { Navbar, Nav, Container, Dropdown, Badge } from 'react-bootstrap';
 import { LinkContainer } from 'react-router-bootstrap';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { toast } from 'react-toastify';
+import { useNotification } from '../contexts/NotificationContext';
 import logo from '../assets/logo.png';
 import { FaHome, FaUsers, FaGraduationCap, FaHistory, FaCog, FaUserCircle, FaSignOutAlt, FaBuilding } from 'react-icons/fa';
 
@@ -11,10 +11,11 @@ const CustomNavbar = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const { notify } = useNotification();
 
   const handleLogout = () => {
     logout();
-    toast.success('Đăng xuất thành công!');
+    notify.success('Đăng xuất thành công!');
     navigate('/login');
   };
 

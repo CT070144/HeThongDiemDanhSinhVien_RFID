@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Container, Row, Col, Card, Form, Button, Alert } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useNotification } from '../contexts/NotificationContext';
 import ta1Background from '../assets/ta1-background.jpg';
 
 const Login = () => {
@@ -14,6 +14,7 @@ const Login = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
+  const { notify } = useNotification();
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -43,15 +44,15 @@ const Login = () => {
         // Sử dụng AuthContext để login
         login(data.token, data.user);
         
-        toast.success('Đăng nhập thành công!');
+        notify.success('Đăng nhập thành công!');
         navigate('/dashboard');
       } else {
         setError(data.error || 'Đăng nhập thất bại');
-        toast.error(data.error || 'Đăng nhập thất bại');
+        notify.error(data.error || 'Đăng nhập thất bại');
       }
     } catch (error) {
       setError('Có lỗi xảy ra khi đăng nhập');
-      toast.error('Có lỗi xảy ra khi đăng nhập');
+      notify.error('Có lỗi xảy ra khi đăng nhập');
     } finally {
       setLoading(false);
     }

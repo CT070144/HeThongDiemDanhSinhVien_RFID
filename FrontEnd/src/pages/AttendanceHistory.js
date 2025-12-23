@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal } from 'react-bootstrap';
 import * as XLSX from 'xlsx';
 import { exportAttendanceToExcel } from '../services/exportExcel';
-import { toast } from 'react-toastify';
 import { attendanceAPI } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 import api from '../services/api';
 import io  from "socket.io-client";
 import { formatTime } from '../services/format-time';
@@ -11,6 +11,7 @@ import { FaFilter, FaTimes, FaCalendarAlt, FaClock, FaGraduationCap, FaIdCard, F
 
 
 const AttendanceHistory = () => {
+  const { notify } = useNotification();
   const [attendance, setAttendance] = useState([]);
   const [filteredAttendance, setFilteredAttendance] = useState([]);
   const [allFilteredAttendance, setAllFilteredAttendance] = useState([]);
@@ -106,26 +107,10 @@ const AttendanceHistory = () => {
           // Hiển thị thông báo nếu là bản ghi mới và chưa được thông báo
           if (isNewRecord && result.id && !notifiedIdsRef.current.has(result.id)) {
             notifiedIdsRef.current.add(result.id);
-            // Sử dụng setTimeout để đảm bảo toast được gọi sau khi state đã cập nhật
+            // Sử dụng setTimeout để đảm bảo thông báo được gọi sau khi state đã cập nhật
             setTimeout(() => {
-              toast.info(
-                <div>
-                  <div className="fw-bold">Điểm danh mới</div>
-                  <div className="small">
-                    {result.tenSinhVien} ({result.maSinhVien})
-                  </div>
-                  <div className="small text-muted">
-                    {result.phongHoc || 'N/A'} - {new Date(result.createdAt).toLocaleTimeString('vi-VN')}
-                  </div>
-                </div>,
-                {
-                  position: "top-right",
-                  autoClose: 5000,
-                  hideProgressBar: false,
-                  closeOnClick: true,
-                  pauseOnHover: true,
-                  draggable: true,
-                }
+              notify.info(
+                `Điểm danh mới: ${result.tenSinhVien} (${result.maSinhVien}) - ${result.phongHoc || 'N/A'}`
               );
             }, 0);
           }
@@ -312,7 +297,7 @@ const AttendanceHistory = () => {
 
   const exportExcel = () => {
     if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
-      toast.error('Khi lọc theo lớp học phần, bạn phải chọn cả Ngày và Ca học để xuất Excel!');
+      notify.error('Khi lọc theo lớp học phần, bạn phải chọn cả Ngày và Ca học để xuất Excel!');
       return;
     }
     exportAttendanceToExcel({

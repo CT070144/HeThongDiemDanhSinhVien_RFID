@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner, Pagination } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { attendanceAPI, studentAPI, deviceAPI, roomAPI } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch } from 'react-icons/fa';
 
 const SettingsPage = () => {
+  const { notify } = useNotification();
   const [unprocessedRfids, setUnprocessedRfids] = useState([]);
   const [page, setPage] = useState(1);
   const pageSize = 8;
@@ -75,7 +76,7 @@ const SettingsPage = () => {
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    toast.success('Đã copy RFID');
+    notify.success('Đã copy RFID');
   };
 
   const handleDeleteUnregistered = async (id) => {
@@ -84,9 +85,9 @@ const SettingsPage = () => {
       // For now, mark processed as a way to hide from list
       await attendanceAPI.markProcessed(id);
       await loadUnprocessedRfids();
-      toast.success('Đã xóa RFID chưa đăng ký');
+      notify.success('Đã xóa RFID chưa đăng ký');
     } catch (e) {
-      toast.error('Thao tác thất bại');
+      notify.error('Thao tác thất bại');
     }
   };
 
@@ -107,16 +108,16 @@ const SettingsPage = () => {
   const handleCreateDevice = async (e) => {
     e.preventDefault();
     if (!newDevice.maThietBi || !newDevice.phongHoc) {
-      toast.error('Vui lòng nhập đủ Mã thiết bị và Phòng học');
+      notify.error('Vui lòng nhập đủ Mã thiết bị và Phòng học');
       return;
     }
     try {
       await deviceAPI.create({ maThietBi: newDevice.maThietBi, phongHoc: newDevice.phongHoc });
-      toast.success('Đã tạo thiết bị');
+      notify.success('Đã tạo thiết bị');
       setNewDevice({ maThietBi: '', phongHoc: '' });
       loadDevices();
     } catch (e) {
-      toast.error('Không thể tạo thiết bị');
+      notify.error('Không thể tạo thiết bị');
     }
   };
 
@@ -148,7 +149,7 @@ const SettingsPage = () => {
   const handleSaveRoom = async (e) => {
     e.preventDefault();
     if (!roomForm.maPhong) {
-      toast.error('Vui lòng nhập Mã phòng');
+      notify.error('Vui lòng nhập Mã phòng');
       return;
     }
     try {
@@ -159,16 +160,16 @@ const SettingsPage = () => {
       };
       if (editingRoom) {
         await roomAPI.update(editingRoom, payload);
-        toast.success('Cập nhật phòng học thành công');
+        notify.success('Cập nhật phòng học thành công');
       } else {
         await roomAPI.create(payload);
-        toast.success('Tạo phòng học thành công');
+        notify.success('Tạo phòng học thành công');
       }
       resetRoomForm();
       loadRooms(roomKeyword);
     } catch (e) {
       const msg = e.response?.data?.message || 'Lưu phòng học thất bại';
-      toast.error(msg);
+      notify.error(msg);
     }
   };
 
@@ -189,12 +190,12 @@ const SettingsPage = () => {
     if (!window.confirm('Xóa phòng học này?')) return;
     try {
       await roomAPI.delete(maPhong);
-      toast.success('Đã xóa phòng học');
+      notify.success('Đã xóa phòng học');
       if (editingRoom === maPhong) resetRoomForm();
       loadRooms(roomKeyword);
     } catch (e) {
       const msg = e.response?.data?.message || 'Xóa phòng học thất bại';
-      toast.error(msg);
+      notify.error(msg);
     }
   };
 

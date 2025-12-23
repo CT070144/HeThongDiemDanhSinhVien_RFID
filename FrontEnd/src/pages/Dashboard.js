@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback,useRef } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Dropdown } from 'react-bootstrap';
-import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
+import { useNotification } from '../contexts/NotificationContext';
 import { FaUsers, FaCalendarCheck, FaExclamationTriangle, FaClock, FaChartBar, FaChartPie, FaChartLine, FaSync, FaFilter } from 'react-icons/fa';
 import {
   Chart as ChartJS,
@@ -33,6 +33,7 @@ ChartJS.register(
 );
 
 const Dashboard = () => {
+  const { notify } = useNotification();
   const [stats, setStats] = useState({
     totalStudents: 0,
     todayAttendance: 0,
@@ -191,11 +192,11 @@ const Dashboard = () => {
       // Calculate chart data
       calculateChartData(todayAttendance);
     } catch (error) {
-      toast.error('Lỗi khi tải dữ liệu dashboard');
+      notify.error('Lỗi khi tải dữ liệu dashboard');
     } finally {
       setLoading(false);
     }
-  }, [computeDateRange, dateFilterType]);
+  }, [computeDateRange, dateFilterType, notify]);
 
   useEffect(() => {
     loadDashboardData();
