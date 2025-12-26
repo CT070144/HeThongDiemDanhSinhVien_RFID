@@ -3,8 +3,9 @@ import { Container, Row, Col, Card, Table, Button, Modal, Form, Alert, Badge, Sp
 import { toast } from 'react-toastify';
 import * as XLSX from 'xlsx';
 import { exportClassAttendanceMatrix } from '../services/exportExcel';
-import api from '../services/api';
+import api, { roomAPI } from '../services/api';
 import { FaFileDownload, FaPlus, FaUpload, FaSearch, FaSync, FaEdit, FaTrash, FaGraduationCap, FaCheckCircle } from "react-icons/fa";
+import { Divider } from '@mui/material';
 
 const LopHocPhanManagement = () => {
   const [lopHocPhans, setLopHocPhans] = useState([]);
@@ -33,6 +34,8 @@ const LopHocPhanManagement = () => {
   const [selectedStudentsToRemove, setSelectedStudentsToRemove] = useState([]);
   const [addStudentSearchTerm, setAddStudentSearchTerm] = useState('');
   const [removeStudentSearchTerm, setRemoveStudentSearchTerm] = useState('');
+  const [phongHocList, setPhongHocList] = useState([]);
+  const [loadingPhongHoc, setLoadingPhongHoc] = useState(false);
 
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -42,7 +45,10 @@ const LopHocPhanManagement = () => {
   // Form states
   const [formData, setFormData] = useState({
     maLopHocPhan: '',
-    tenLopHocPhan: ''
+    tenLopHocPhan: '',
+    giangVien: '',
+    hinhThucHoc: '',
+    phongHoc: ''
   });
   const [excelFile, setExcelFile] = useState(null);
   const [previewStudents, setPreviewStudents] = useState([]);
@@ -51,6 +57,7 @@ const LopHocPhanManagement = () => {
   useEffect(() => {
     fetchLopHocPhans();
     fetchAllStudents();
+    fetchPhongHocList();
   }, [lhpPage, lhpSize]);
 
   const fetchLopHocPhans = async () => {
@@ -103,6 +110,19 @@ const LopHocPhanManagement = () => {
     } catch (error) {
       toast.error('Lỗi khi tải danh sách sinh viên');
       console.error('Error fetching all students:', error);
+    }
+  };
+
+  const fetchPhongHocList = async () => {
+    setLoadingPhongHoc(true);
+    try {
+      const response = await roomAPI.getAll();
+      setPhongHocList(response.data || []);
+    } catch (error) {
+      console.error('Error fetching phong hoc list:', error);
+      // Không hiển thị toast error vì đây là lookup, không ảnh hưởng chức năng chính
+    } finally {
+      setLoadingPhongHoc(false);
     }
   };
 
@@ -159,7 +179,13 @@ const LopHocPhanManagement = () => {
 
 
   const handleCreate = () => {
-    setFormData({ maLopHocPhan: '', tenLopHocPhan: '' });
+    setFormData({ 
+      maLopHocPhan: '', 
+      tenLopHocPhan: '',
+      giangVien: '',
+      hinhThucHoc: '',
+      phongHoc: ''
+    });
     setExcelFile(null);
     setPreviewStudents([]);
     setIsPreviewing(false);
@@ -239,7 +265,10 @@ const LopHocPhanManagement = () => {
   const handleEdit = async (lopHocPhan) => {
     setFormData({
       maLopHocPhan: lopHocPhan.maLopHocPhan,
-      tenLopHocPhan: lopHocPhan.tenLopHocPhan
+      tenLopHocPhan: lopHocPhan.tenLopHocPhan,
+      giangVien: lopHocPhan.giangVien || '',
+      hinhThucHoc: lopHocPhan.hinhThucHoc || '',
+      phongHoc: lopHocPhan.phongHoc || ''
     });
     
     // Load students in this class for editing
@@ -708,6 +737,13 @@ const LopHocPhanManagement = () => {
   // Close main modal and reset all states
   const handleCloseModal = () => {
     setShowModal(false);
+    setFormData({ 
+      maLopHocPhan: '', 
+      tenLopHocPhan: '',
+      giangVien: '',
+      hinhThucHoc: '',
+      phongHoc: ''
+    });
     setStudentsInClass([]);
     setSelectedStudentsToAdd([]);
     setSelectedStudentsToRemove([]);
@@ -958,13 +994,66 @@ const LopHocPhanManagement = () => {
                   />
                 </Form.Group>
                 
+                <Form.Group className="mb-3">
+                  <Form.Label>Giảng viên</Form.Label>
+                  <Form.Control
+                    type="text"
+                    value={formData.giangVien}
+                    onChange={(e) => setFormData({ ...formData, giangVien: e.target.value })}
+                    placeholder="Nhập tên giảng viên"
+                  />
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Hình thức học</Form.Label>
+                  <Form.Select
+                    value={formData.hinhThucHoc}
+                    onChange={(e) => setFormData({ ...formData, hinhThucHoc: e.target.value })}
+                  >
+                    <option value="">Chọn hình thức học</option>
+                    <option value="Lý thuyết">Lý thuyết</option>
+                    <option value="Thực hành">Thực hành</option>
+                    <option value="Lý thuyết + Thực hành">Lý thuyết + Thực hành</option>
+                    <option value="Đồ án">Đồ án</option>
+                    <option value="Thực tập">Thực tập</option>
+                  </Form.Select>
+                </Form.Group>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label>Phòng học</Form.Label>
+                  {loadingPhongHoc ? (
+                    <div className="d-flex align-items-center">
+                      <Spinner size="sm" className="me-2" />
+                      <span className="text-muted">Đang tải danh sách phòng học...</span>
+                    </div>
+                  ) : (
+                    <Form.Select
+                      value={formData.phongHoc}
+                      onChange={(e) => setFormData({ ...formData, phongHoc: e.target.value })}
+                    >
+                      <option value="">Chọn phòng học</option>
+                      {phongHocList.map((phong) => (
+                        <option key={phong.maPhong} value={phong.maPhong}>
+                          {phong.maPhong} {phong.tenPhong ? `- ${phong.tenPhong}` : ''} {phong.toaNha ? `(${phong.toaNha})` : ''}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  )}
+                  {phongHocList.length === 0 && !loadingPhongHoc && (
+                    <Form.Text className="text-muted">
+                      Không có phòng học nào. Vui lòng thêm phòng học trước.
+                    </Form.Text>
+                  )}
+                </Form.Group>
+                
                 {/* File upload section - chỉ hiện khi tạo mới */}
                 {(!formData.maLopHocPhan || !lopHocPhans.some(lhp => lhp.maLopHocPhan === formData.maLopHocPhan)) && (
                   <>
+                  <Divider sx={{ my: 2 }} variant="middle" />
                     <Form.Group className="mb-3">
                       <Form.Label className="fw-semibold d-flex align-items-center">
                         <FaUpload className="me-2 text-primary" />
-                        Đính kèm file Excel danh sách sinh viên (Tùy chọn)
+                        Import lớp học phần từ file Excel
                       </Form.Label>
                       <div
                         onDrop={handleDrop}

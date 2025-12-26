@@ -207,7 +207,9 @@ public class RoomStatusService {
             }
 
             // Lấy danh sách điểm danh
+            System.out.println(maPhong + ngay + ca + "checked");
             List<PhieuDiemDanh> attendance = phieuDiemDanhRepository.findByPhongHocAndNgayAndCa(maPhong, ngay, ca);
+            System.out.println(attendance.size());
             classInfo.setSoSinhVienDaDiemDanh(attendance.size());
 
             // Chuyển đổi danh sách điểm danh sang DTO

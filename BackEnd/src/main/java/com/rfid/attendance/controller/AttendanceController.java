@@ -1,5 +1,8 @@
 package com.rfid.attendance.controller;
 
+import com.corundumstudio.socketio.SocketIOServer;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rfid.attendance.entity.DocRfid;
 import com.rfid.attendance.entity.PhieuDiemDanh;
 import com.rfid.attendance.service.AttendanceService;
@@ -21,7 +24,12 @@ public class AttendanceController {
     
     @Autowired
     private AttendanceService attendanceService;
-    
+    @Autowired
+    ObjectMapper objectMapper;
+    @Autowired
+    private SocketIOServer socketIOServer;
+
+
     @GetMapping
     public ResponseEntity<List<PhieuDiemDanh>> getAllAttendance() {
         try {
@@ -164,6 +172,56 @@ public class AttendanceController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", e.getMessage()));
+        }
+    }
+    
+    /**
+     * API đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên RFID
+     * Cập nhật masinhvien và tensinhvien trong phieudiemdanh từ dữ liệu trong sinhvien
+     * 
+     * @return ResponseEntity chứa thống kê kết quả đồng bộ
+     */
+    @PostMapping("/sync-student-info")
+    public ResponseEntity<?> syncStudentInfoFromRfid() {
+        try {
+            System.out.println("=== API ĐỒNG BỘ DỮ LIỆU SINH VIÊN ===");
+            Map<String, Object> result = attendanceService.syncStudentInfoFromRfid();
+            return ResponseEntity.ok(result);
+        } catch (Exception e) {
+            System.err.println("Lỗi khi đồng bộ dữ liệu: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", "Lỗi khi đồng bộ dữ liệu",
+                    "message", e.getMessage()
+                ));
+        }
+    }
+    
+    /**
+     * API lấy danh sách phiếu điểm danh theo lớp học phần
+     * Lấy tất cả ca học của lớp học phần, sau đó lấy các phiếu điểm danh có ca học và ngày học 
+     * mà lớp học phần diễn ra và so sánh với danh sách sinh viên của lớp học phần đó
+     * 
+     * @param maLopHocPhan Mã lớp học phần
+     * @return Danh sách phiếu điểm danh của sinh viên trong lớp học phần
+     */
+    @GetMapping("/by-lophocphan/{maLopHocPhan}")
+    public ResponseEntity<?> getAttendanceByLopHocPhan(@PathVariable String maLopHocPhan) {
+        try {
+            List<PhieuDiemDanh> attendance = attendanceService.getAttendanceByLopHocPhan(maLopHocPhan);
+            return ResponseEntity.ok(attendance);
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            System.err.println("Lỗi khi lấy phiếu điểm danh theo lớp học phần: " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of(
+                    "error", "Lỗi khi lấy phiếu điểm danh theo lớp học phần",
+                    "message", e.getMessage()
+                ));
         }
     }
     

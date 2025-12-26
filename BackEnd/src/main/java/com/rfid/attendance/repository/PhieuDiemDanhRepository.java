@@ -83,4 +83,13 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     List<PhieuDiemDanh> findByPhongHocAndNgayAndCa(@Param("phongHoc") String phongHoc,
                                                     @Param("ngay") LocalDate ngay,
                                                     @Param("ca") Integer ca);
+    
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE " +
+           "p.ngay = :ngay AND " +
+           "p.ca = :ca AND " +
+           "p.maSinhVien IN :maSinhVienList " +
+           "ORDER BY p.createdAt DESC")
+    List<PhieuDiemDanh> findByNgayAndCaAndMaSinhVienIn(@Param("ngay") LocalDate ngay,
+                                                        @Param("ca") Integer ca,
+                                                        @Param("maSinhVienList") List<String> maSinhVienList);
 }

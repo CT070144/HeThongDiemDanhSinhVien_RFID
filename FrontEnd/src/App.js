@@ -1,9 +1,11 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
+import AttendanceNotificationListener from './components/AttendanceNotificationListener';
 import Login from './pages/Login';
 import StudentManagement from './pages/StudentManagement';
 import AttendanceHistory from './pages/AttendanceHistory';
@@ -53,6 +55,7 @@ function AppContent() {
   return (
     <div className="App d-flex flex-column" style={{ minHeight: '100vh' }}>
       {isAuthenticated() && <Navbar />}
+      {isAuthenticated() && <AttendanceNotificationListener />}
       <div className={isAuthenticated() ? "container-fluid flex-grow-1" : ""} style={{ flex: 1 }}>
         <Routes>
           <Route path="/login" element={
@@ -94,6 +97,18 @@ function AppContent() {
         </Routes>
       </div>
       {isAuthenticated() && <Footer />}
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="light"
+      />
     </div>
   );
 }

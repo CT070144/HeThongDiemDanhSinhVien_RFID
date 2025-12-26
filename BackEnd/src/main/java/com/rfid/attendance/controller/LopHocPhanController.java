@@ -135,6 +135,8 @@ public class LopHocPhanController {
     
     @PutMapping("/{maLopHocPhan}")
     public ResponseEntity<Map<String, Object>> updateLopHocPhan(@PathVariable String maLopHocPhan, @RequestBody LopHocPhan lopHocPhanDetails) {
+
+
         Map<String, Object> response = new HashMap<>();
         try {
             LopHocPhan updated = lopHocPhanService.updateLopHocPhan(maLopHocPhan, lopHocPhanDetails);

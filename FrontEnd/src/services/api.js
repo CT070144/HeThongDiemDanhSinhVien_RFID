@@ -69,9 +69,11 @@ export const attendanceAPI = {
     return api.get(`/attendance/filter?${params.toString()}`);
   },
   getByStudent: (maSinhVien) => api.get(`/attendance/student/${maSinhVien}`),
+  getByLopHocPhan: (maLopHocPhan) => api.get(`/attendance/by-lophocphan/${maLopHocPhan}`),
   processRfid: (rfid, maThietBi) => api.post('/attendance/rfid', { rfid, maThietBi }),
   getUnprocessedRfids: () => api.get('/attendance/unprocessed-rfids'),
   markProcessed: (id) => api.put(`/attendance/mark-processed/${id}`),
+  syncStudentInfo: () => api.post('/attendance/sync-student-info'),
 };
 
 // Device API

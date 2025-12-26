@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.ArrayList;
 
 @Service
 @Transactional
@@ -36,6 +37,15 @@ public class AttendanceService {
 
     @Autowired
     private ThietBiRepository thietBiRepository;
+
+    @Autowired
+    private LopHocPhanRepository lopHocPhanRepository;
+    
+    @Autowired
+    private CaHocRepository caHocRepository;
+    
+    @Autowired
+    private SinhVienLopHocPhanRepository sinhVienLopHocPhanRepository;
 
     @Autowired
     ObjectMapper objectMapper;
@@ -163,7 +173,20 @@ public class AttendanceService {
 
     public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
         PhieuDiemDanh record = processRfidAttendance(rfid);
-        if (record.getRfid() == null) return record;
+        if (record.getRfid() == null) {
+            // RFID không tồn tại, publish event invalid-rfid
+            socketIOServer.getAllClients().forEach(client -> {
+                String message = null;
+                try {
+                    message = objectMapper.writeValueAsString(rfid);
+                } catch (JsonProcessingException e) {
+                    System.out.println("error convert RFID to JSON");
+                }
+                System.out.println("publishing invalid-rfid event: " + message);
+                client.sendEvent("invalid-rfid", message);
+            });
+            return record;
+        }
         if (maThietBi != null && !maThietBi.isEmpty() && record.getCa() != -99) {
             Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
             tb.ifPresent(thietBi -> {
@@ -320,5 +343,195 @@ public class AttendanceService {
     // Getter cho repository để debug
     public SinhVienRepository getSinhVienRepository() {
         return sinhVienRepository;
+    }
+    
+    /**
+     * Đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên RFID
+     * Cập nhật masinhvien và tensinhvien trong phieudiemdanh từ dữ liệu trong sinhvien
+     * 
+     * @return Map chứa thống kê kết quả đồng bộ
+     */
+    @Transactional
+    public Map<String, Object> syncStudentInfoFromRfid() {
+        Map<String, Object> result = new java.util.HashMap<>();
+        int totalRecords = 0;
+        int updatedRecords = 0;
+        int notFoundRecords = 0;
+        List<String> notFoundRfids = new java.util.ArrayList<>();
+        
+        // Lấy tất cả các phiếu điểm danh
+        List<PhieuDiemDanh> allAttendance = phieuDiemDanhRepository.findAll();
+        totalRecords = allAttendance.size();
+        
+        System.out.println("=== BẮT ĐẦU ĐỒNG BỘ DỮ LIỆU SINH VIÊN ===");
+        System.out.println("Tổng số phiếu điểm danh: " + totalRecords);
+        
+        // Tạo map để cache thông tin sinh viên theo RFID
+        Map<String, SinhVien> sinhVienMap = sinhVienRepository.findAll().stream()
+            .collect(Collectors.toMap(
+                sv -> sv.getRfid() != null ? sv.getRfid().trim() : "",
+                Function.identity(),
+                (existing, replacement) -> existing
+            ));
+        
+        System.out.println("Tổng số sinh viên trong hệ thống: " + sinhVienMap.size());
+        
+        // Duyệt qua từng phiếu điểm danh và cập nhật
+        for (PhieuDiemDanh attendance : allAttendance) {
+            if (attendance.getRfid() == null || attendance.getRfid().trim().isEmpty()) {
+                notFoundRecords++;
+                continue;
+            }
+            
+            String trimmedRfid = attendance.getRfid().trim();
+            SinhVien sinhVien = sinhVienMap.get(trimmedRfid);
+            
+            if (sinhVien != null) {
+                // Kiểm tra xem có cần cập nhật không
+                boolean needsUpdate = false;
+                
+                if (!sinhVien.getMaSinhVien().equals(attendance.getMaSinhVien())) {
+                    attendance.setMaSinhVien(sinhVien.getMaSinhVien());
+                    needsUpdate = true;
+                }
+                
+                if (!sinhVien.getTenSinhVien().equals(attendance.getTenSinhVien())) {
+                    attendance.setTenSinhVien(sinhVien.getTenSinhVien());
+                    needsUpdate = true;
+                }
+                
+                if (needsUpdate) {
+                    phieuDiemDanhRepository.save(attendance);
+                    updatedRecords++;
+                    System.out.println("Đã cập nhật: RFID=" + trimmedRfid + 
+                                     ", Mã SV: " + attendance.getMaSinhVien() + 
+                                     ", Tên: " + attendance.getTenSinhVien());
+                }
+            } else {
+                notFoundRecords++;
+                if (!notFoundRfids.contains(trimmedRfid)) {
+                    notFoundRfids.add(trimmedRfid);
+                }
+                System.out.println("Không tìm thấy sinh viên với RFID: " + trimmedRfid);
+            }
+        }
+        
+        System.out.println("=== KẾT THÚC ĐỒNG BỘ ===");
+        System.out.println("Tổng số bản ghi: " + totalRecords);
+        System.out.println("Số bản ghi đã cập nhật: " + updatedRecords);
+        System.out.println("Số bản ghi không tìm thấy sinh viên: " + notFoundRecords);
+        
+        result.put("totalRecords", totalRecords);
+        result.put("updatedRecords", updatedRecords);
+        result.put("notFoundRecords", notFoundRecords);
+        result.put("notFoundRfids", notFoundRfids);
+        result.put("message", "Đồng bộ hoàn tất. Đã cập nhật " + updatedRecords + " bản ghi.");
+        
+        return result;
+    }
+    
+    /**
+     * Lấy danh sách phiếu điểm danh theo lớp học phần
+     * Lấy tất cả ca học của lớp học phần, sau đó lấy các phiếu điểm danh có ca học và ngày học 
+     * mà lớp học phần diễn ra và so sánh với danh sách sinh viên của lớp học phần đó
+     * 
+     * @param maLopHocPhan Mã lớp học phần
+     * @return Danh sách phiếu điểm danh của sinh viên trong lớp học phần
+     */
+    @Transactional(readOnly = true)
+    public List<PhieuDiemDanh> getAttendanceByLopHocPhan(String maLopHocPhan) {
+        // 1. Lấy thông tin lớp học phần
+        Optional<LopHocPhan> lopHocPhanOpt = lopHocPhanRepository.findByMaLopHocPhan(maLopHocPhan);
+        if (!lopHocPhanOpt.isPresent()) {
+            throw new RuntimeException("Không tìm thấy lớp học phần với mã: " + maLopHocPhan);
+        }
+        
+        LopHocPhan lopHocPhan = lopHocPhanOpt.get();
+        String tenLopHocPhan = lopHocPhan.getTenLopHocPhan();
+        
+        // 2. Lấy tất cả ca học của lớp học phần (ngày và ca)
+        List<Object[]> distinctSessions = caHocRepository.findDistinctSessionsByLopHocPhan(tenLopHocPhan);
+        
+        if (distinctSessions.isEmpty()) {
+            // Không có ca học nào, trả về danh sách rỗng
+            return new java.util.ArrayList<>();
+        }
+        
+        // 3. Lấy danh sách mã sinh viên trong lớp học phần
+        List<SinhVienLopHocPhan> sinhVienLopHocPhans = sinhVienLopHocPhanRepository.findByMaLopHocPhan(maLopHocPhan);
+        List<String> maSinhVienList = sinhVienLopHocPhans.stream()
+                .map(SinhVienLopHocPhan::getMaSinhVien)
+                .collect(Collectors.toList());
+        
+        if (maSinhVienList.isEmpty()) {
+            // Không có sinh viên nào trong lớp, trả về danh sách rỗng
+            return new java.util.ArrayList<>();
+        }
+        
+        // 4. Lấy tất cả phiếu điểm danh có ngày và ca trùng với các ca học của lớp
+        // Và CHỈ lấy của sinh viên trong lớp học phần (sử dụng query tối ưu với IN clause)
+        List<PhieuDiemDanh> allAttendance = new java.util.ArrayList<>();
+        
+        // Đảm bảo danh sách mã sinh viên không rỗng và không có giá trị null/empty
+        List<String> validMaSinhVienList = maSinhVienList.stream()
+                .filter(msv -> msv != null && !msv.trim().isEmpty())
+                .map(String::trim)
+                .distinct()
+                .collect(Collectors.toList());
+        
+        if (validMaSinhVienList.isEmpty()) {
+            // Không có sinh viên hợp lệ trong lớp, trả về danh sách rỗng
+            return new java.util.ArrayList<>();
+        }
+        
+        System.out.println("=== LỌC PHIẾU ĐIỂM DANH THEO LỚP HỌC PHẦN ===");
+        System.out.println("Mã lớp học phần: " + maLopHocPhan);
+        System.out.println("Tên lớp học phần: " + tenLopHocPhan);
+        System.out.println("Số sinh viên trong lớp: " + validMaSinhVienList.size());
+        System.out.println("Số ca học: " + distinctSessions.size());
+        
+        for (Object[] session : distinctSessions) {
+            LocalDate ngayHoc = (LocalDate) session[0];
+            Integer ca = (Integer) session[1];
+            
+            if (ngayHoc != null && ca != null) {
+                // Sử dụng query tối ưu để lấy CHỈ phiếu điểm danh của sinh viên trong lớp
+                // Query này sẽ tự động lọc theo maSinhVien IN (danh sách mã sinh viên của lớp)
+                List<PhieuDiemDanh> attendanceForSession = phieuDiemDanhRepository.findByNgayAndCaAndMaSinhVienIn(
+                        ngayHoc, ca, validMaSinhVienList);
+                
+                // Đảm bảo tất cả phiếu điểm danh trả về đều có mã sinh viên trong danh sách
+                // (Double check để đảm bảo an toàn)
+                List<PhieuDiemDanh> verifiedAttendance = attendanceForSession.stream()
+                        .filter(att -> att.getMaSinhVien() != null && 
+                                      validMaSinhVienList.contains(att.getMaSinhVien().trim()))
+                        .collect(Collectors.toList());
+                
+                System.out.println("Ngày: " + ngayHoc + ", Ca: " + ca + 
+                                 " - Tìm thấy " + verifiedAttendance.size() + " phiếu điểm danh");
+                
+                allAttendance.addAll(verifiedAttendance);
+            }
+        }
+        
+        System.out.println("Tổng số phiếu điểm danh: " + allAttendance.size());
+        
+        // 5. Sắp xếp theo ngày giảm dần, ca tăng dần, thời gian tạo giảm dần
+        allAttendance.sort((a, b) -> {
+            int dateCompare = b.getNgay().compareTo(a.getNgay());
+            if (dateCompare != 0) return dateCompare;
+            
+            int caCompare = Integer.compare(a.getCa() != null ? a.getCa() : 0, 
+                                           b.getCa() != null ? b.getCa() : 0);
+            if (caCompare != 0) return caCompare;
+            
+            // So sánh theo createdAt nếu có
+            if (a.getCreatedAt() != null && b.getCreatedAt() != null) {
+                return b.getCreatedAt().compareTo(a.getCreatedAt());
+            }
+            return 0;
+        });
+        
+        return allAttendance;
     }
 }

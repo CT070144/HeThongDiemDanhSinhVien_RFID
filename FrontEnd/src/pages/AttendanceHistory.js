@@ -30,7 +30,7 @@ const AttendanceHistory = () => {
     khongDiemDanhRa: 0
   });
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(5);
+  const [pageSize] = useState(12);
   const [filters, setFilters] = useState({
     ngay: '',
     ca: '',
@@ -104,16 +104,8 @@ const AttendanceHistory = () => {
             next = [result, ...prev];
           }
           
-          // Hiển thị thông báo nếu là bản ghi mới và chưa được thông báo
-          if (isNewRecord && result.id && !notifiedIdsRef.current.has(result.id)) {
-            notifiedIdsRef.current.add(result.id);
-            // Sử dụng setTimeout để đảm bảo thông báo được gọi sau khi state đã cập nhật
-            setTimeout(() => {
-              notify.info(
-                `Điểm danh mới: ${result.tenSinhVien} (${result.maSinhVien}) - ${result.phongHoc || 'N/A'}`
-              );
-            }, 0);
-          }
+          // Không hiển thị thông báo ở đây vì đã có global AttendanceNotificationListener
+          // Chỉ cập nhật state để hiển thị trong danh sách
           
           return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         });
@@ -131,51 +123,72 @@ const AttendanceHistory = () => {
   }, []);
 
   const filterAttendance = useCallback(async () => {
-    let filtered = [...attendance];
+    let filtered = [];
 
-    // Validate: Nếu lọc theo lớp học phần thì bắt buộc phải có ngày và ca
-    if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
-      // Không filter gì cả nếu thiếu ngày hoặc ca
-      setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
-      setAllFilteredAttendance([]);
-      setFilteredAttendance([]);
-      return;
-    }
-
-    if (filters.ngay) {
-      filtered = filtered.filter(item => item.ngay === filters.ngay);
-    }
-
-    if (filters.ca) {
-      filtered = filtered.filter(item => item.ca === parseInt(filters.ca));
-    }
-
-    if (filters.maSinhVien) {
-      filtered = filtered.filter(item =>
-        item.maSinhVien.toLowerCase().includes(filters.maSinhVien.toLowerCase())
-      );
-    }
-
-    if (filters.phongHoc) {
-      filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
-    }
-
-    // Filter by lop hoc phan
+    // Nếu lọc theo lớp học phần, sử dụng API riêng
     if (filters.lopHocPhan) {
       try {
-        const response = await api.get(`/lophocphan/${filters.lopHocPhan}/sinhvien`);
-        const studentsInLop = response.data;
-        const studentIdsInLop = studentsInLop.map(s => s.maSinhVien);
-        filtered = filtered.filter(item => studentIdsInLop.includes(item.maSinhVien));
+        // Gọi API mới để lấy phiếu điểm danh theo lớp học phần
+        const response = await attendanceAPI.getByLopHocPhan(filters.lopHocPhan);
+        filtered = response.data || [];
+        
+        // Lấy danh sách sinh viên trong lớp để tính thống kê
+        const studentsResponse = await api.get(`/lophocphan/${filters.lopHocPhan}/sinhvien`);
+        const studentsInLop = studentsResponse.data || [];
         setStudentsInLop(studentsInLop);
         
-        // Calculate attendance stats for the class
+        // Tính thống kê điểm danh cho lớp
         calculateAttendanceStats(studentsInLop, filtered);
+        
+        // Áp dụng các filter bổ sung (ngày, ca, mã sinh viên, phòng học)
+        if (filters.ngay) {
+          filtered = filtered.filter(item => item.ngay === filters.ngay);
+        }
+
+        if (filters.ca) {
+          filtered = filtered.filter(item => item.ca === parseInt(filters.ca));
+        }
+
+        if (filters.maSinhVien) {
+          filtered = filtered.filter(item =>
+            item.maSinhVien.toLowerCase().includes(filters.maSinhVien.toLowerCase())
+          );
+        }
+
+        if (filters.phongHoc) {
+          filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
+        }
       } catch (error) {
         console.error('Error filtering by lop hoc phan:', error);
+        notify.error('Lỗi khi lọc theo lớp học phần');
+        setStudentsInLop([]);
+        setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
+        setAllFilteredAttendance([]);
+        setFilteredAttendance([]);
+        return;
       }
     } else {
+      // Không lọc theo lớp học phần, sử dụng logic cũ
+      filtered = [...attendance];
+
+      if (filters.ngay) {
+        filtered = filtered.filter(item => item.ngay === filters.ngay);
+      }
+
+      if (filters.ca) {
+        filtered = filtered.filter(item => item.ca === parseInt(filters.ca));
+      }
+
+      if (filters.maSinhVien) {
+        filtered = filtered.filter(item =>
+          item.maSinhVien.toLowerCase().includes(filters.maSinhVien.toLowerCase())
+        );
+      }
+
+      if (filters.phongHoc) {
+        filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
+      }
+
       setStudentsInLop([]);
       setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
     }
@@ -189,7 +202,7 @@ const AttendanceHistory = () => {
     const end = start + pageSize;
     setAllFilteredAttendance(sortedFiltered);
     setFilteredAttendance(sortedFiltered.slice(start, end));
-  }, [attendance, filters, page, pageSize]);
+  }, [attendance, filters, page, pageSize, notify]);
 
   const calculateAttendanceStats = (studentsInLop, attendanceRecords) => {
     const totalStudents = studentsInLop.length;
@@ -241,6 +254,7 @@ const AttendanceHistory = () => {
       const sortedData = response.data.sort((a, b) => 
         new Date(b.createdAt) - new Date(a.createdAt)
       );
+      console.log(sortedData);
       setAttendance(sortedData);
       // Đánh dấu tất cả các bản ghi đã load là đã được thông báo để tránh hiển thị toast cho dữ liệu cũ
       sortedData.forEach(record => {
@@ -296,10 +310,6 @@ const AttendanceHistory = () => {
   };
 
   const exportExcel = () => {
-    if (filters.lopHocPhan && (!filters.ngay || !filters.ca)) {
-      notify.error('Khi lọc theo lớp học phần, bạn phải chọn cả Ngày và Ca học để xuất Excel!');
-      return;
-    }
     exportAttendanceToExcel({
       attendance,
       allFilteredAttendance,
@@ -399,7 +409,13 @@ const AttendanceHistory = () => {
                           style={{ borderRadius: '0.375rem' }}
                           onClick={() => setShowLopHocPhanModal(true)}
                         >
-                          <span style={{ whiteSpace: 'wrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <span style={{ 
+                            whiteSpace: 'nowrap', 
+                            overflow: 'hidden', 
+                            textOverflow: 'ellipsis',
+                            flex: 1,
+                            minWidth: 0
+                          }}>
                             {selectedLopHocPhanName || 'Chọn lớp học phần'}
                           </span>
                         </Button>
@@ -526,19 +542,19 @@ const AttendanceHistory = () => {
                       </Row>
 
 
-              {/* Cảnh báo khi chọn lớp học phần nhưng thiếu ngày/ca */}
-              {filters.lopHocPhan && (!filters.ngay || !filters.ca) && (
+              {/* Thông báo khi chọn lớp học phần */}
+              {filters.lopHocPhan && (
                 <Row className="mb-3">
                   <Col>
-                    <Alert variant="warning">
-                      <strong>⚠️ Lưu ý:</strong> Khi lọc theo lớp học phần, bạn phải chọn cả <strong>Ngày</strong> và <strong>Ca học</strong> để xem kết quả.
+                    <Alert variant="info">
+                      <strong>ℹ️ Thông tin:</strong> Đang hiển thị tất cả phiếu điểm danh của lớp học phần này. Bạn có thể lọc thêm theo ngày, ca, mã sinh viên hoặc phòng học.
                     </Alert>
                   </Col>
                 </Row>
               )}
 
               {/* Thống kê lớp học phần */}
-              {filters.lopHocPhan && filters.ngay && filters.ca && attendanceStats.totalStudents > 0 && (
+              {filters.lopHocPhan && attendanceStats.totalStudents > 0 && (
                 <Row className="mb-3">
                   <Col>
                     <Alert variant="info">
@@ -638,7 +654,7 @@ const AttendanceHistory = () => {
                     </Button>
                     <Button 
                       variant="outline-secondary" 
-                      disabled={attendance.length <= page * pageSize} 
+                      disabled={attendance.length < page * pageSize || filteredAttendance.length < page * pageSize} 
                       onClick={() => setPage(p => p + 1)}
                       className="shadow-sm"
                     >

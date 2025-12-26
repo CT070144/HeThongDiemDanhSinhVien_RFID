@@ -168,6 +168,7 @@ const Room = () => {
       
       const response = await roomAPI.getRoomDetail(room.maPhong, params.ngay, params.ca);
       const detail = response.data;
+      console.log(detail);
       
       // Format lại dữ liệu để phù hợp với UI
       setRoomDetail({
@@ -461,7 +462,7 @@ const Room = () => {
             <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
               <div className="d-flex align-items-center">
                 <FaBuilding className="me-2" size={24} />
-                <h3 className="mb-0">Quản lý phòng học</h3>
+                <h3 className="mb-0">Phòng học</h3>
               </div>
               <div className="d-flex gap-2">
                 <Button variant="light" onClick={handleExportExcel} className="shadow-sm">

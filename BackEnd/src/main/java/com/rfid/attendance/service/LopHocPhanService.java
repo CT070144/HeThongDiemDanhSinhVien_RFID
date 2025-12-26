@@ -135,6 +135,9 @@ public class LopHocPhanService {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy lớp học phần với mã: " + maLopHocPhan));
         
         lopHocPhan.setTenLopHocPhan(lopHocPhanDetails.getTenLopHocPhan());
+        lopHocPhan.setGiangVien(lopHocPhanDetails.getGiangVien());
+        lopHocPhan.setPhongHoc(lopHocPhanDetails.getPhongHoc());
+        lopHocPhan.setHinhThucHoc(lopHocPhanDetails.getHinhThucHoc());
         return lopHocPhanRepository.save(lopHocPhan);
     }
     
