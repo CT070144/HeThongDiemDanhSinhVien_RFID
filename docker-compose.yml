@@ -1,0 +1,73 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql_server-ras
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: 1
+      MYSQL_USER: phucnv
+      MYSQL_PASSWORD: 1
+      MYSQL_DATABASE: rfid_attendance_system
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+      - ./ScriptDatabase/rfid_attendance_system_backup.sql:/docker-entrypoint-initdb.d/rfid_attendance_system_backup.sql
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+  backend:
+    build:
+      context: ./BackEnd
+      dockerfile: Dockerfile
+    container_name: backend-ras
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - MYSQL_HOST=mysql
+      - MYSQL_USER=phucnv
+      - MYSQL_PASSWORD=1
+      - MYSQL_DATABASE=rfid_attendance_system
+      - JWT_SECRET=myScretKeyForRFIDAttendanceSystem2024VerySecureKey
+      - SPRING_DEVTOOLS_RESTART_ENABLED=true
+    networks:
+      - app_network
+    volumes:
+      - ./BackEnd:/app
+      - ~/.m2:/root/.m2 # Lấy từ C:\Users\Admin\.m2 trên máy local
+    depends_on:
+      mysql:
+         condition: service_healthy
+  frontend:
+    build:
+      context: ./FrontEnd
+      dockerfile: Dockerfile
+    container_name: frontend-ras
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8080/api
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true 
+      - NODE_ENV=development 
+    volumes:
+      - ./FrontEnd:/app
+      - /app/node_modules
+    networks:
+      - app_network
+    depends_on:
+      backend:
+        condition: service_started
+    stdin_open: true
+    tty: true
+networks:
+    app_network:
+      driver: bridge
+volumes:
+    mysql_data:
