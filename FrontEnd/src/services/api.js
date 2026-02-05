@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8080/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -82,7 +82,14 @@ export const deviceAPI = {
   getOne: (maThietBi) => api.get(`/thietbi/${maThietBi}`),
   create: (data) => api.post('/thietbi', data),
   update: (maThietBi, data) => api.put(`/thietbi/${maThietBi}`, data),
+  toggleStatus: (maThietBi) => api.patch(`/thietbi/${maThietBi}/toggle-status`),
   delete: (maThietBi) => api.delete(`/thietbi/${maThietBi}`),
+  // API Key management
+  getApiKeys: (maThietBi) => api.get(`/thietbi/${maThietBi}/api-keys`),
+  createApiKey: (maThietBi, data) => api.post(`/thietbi/${maThietBi}/api-keys`, data),
+  toggleApiKeyStatus: (id) => api.patch(`/thietbi/api-keys/${id}/toggle`),
+  revokeApiKey: (id) => api.patch(`/thietbi/api-keys/${id}/revoke`),
+  deleteApiKey: (id) => api.delete(`/thietbi/api-keys/${id}`),
 };
 
 // Room (PhongHoc) API

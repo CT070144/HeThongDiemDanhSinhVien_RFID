@@ -212,7 +212,7 @@ public class AttendanceService {
         LocalTime currentTime = LocalTime.now();
         
         // Ca 1: 7h - 9h25 (có thể điểm danh từ 6h50 - 9h35)
-        if (currentTime.isAfter(LocalTime.of(00, 10)) && currentTime.isBefore(LocalTime.of(9, 35))) {
+        if (currentTime.isAfter(LocalTime.of(00, 01)) && currentTime.isBefore(LocalTime.of(9, 35))) {
             return 1;
         }
         // Ca 2: 9h35 - 12h (có thể điểm danh từ 9h25 - 12h10)
@@ -228,7 +228,7 @@ public class AttendanceService {
             return 4;
         }
         // Ca 5: 18h - 20h30 (có thể điểm danh từ 17h50 - 20h40)
-        else if (currentTime.isAfter(LocalTime.of(17, 50)) && currentTime.isBefore(LocalTime.of(20, 30))) {
+        else if (currentTime.isAfter(LocalTime.of(17, 50)) && currentTime.isBefore(LocalTime.of(23, 59))) {
             return 5;
         }
         else {
@@ -346,30 +346,30 @@ public class AttendanceService {
     }
     
     /**
-     * Đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên RFID
-     * Cập nhật masinhvien và tensinhvien trong phieudiemdanh từ dữ liệu trong sinhvien
+     * Đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên mã sinh viên
+     * Cập nhật tensinhvien và rfid trong phieudiemdanh từ dữ liệu trong sinhvien
      * 
      * @return Map chứa thống kê kết quả đồng bộ
      */
     @Transactional
-    public Map<String, Object> syncStudentInfoFromRfid() {
+    public Map<String, Object> syncStudentInfoFromMaSinhVien() {
         Map<String, Object> result = new java.util.HashMap<>();
         int totalRecords = 0;
         int updatedRecords = 0;
         int notFoundRecords = 0;
-        List<String> notFoundRfids = new java.util.ArrayList<>();
+        List<String> notFoundMaSinhViens = new java.util.ArrayList<>();
         
         // Lấy tất cả các phiếu điểm danh
         List<PhieuDiemDanh> allAttendance = phieuDiemDanhRepository.findAll();
         totalRecords = allAttendance.size();
         
-        System.out.println("=== BẮT ĐẦU ĐỒNG BỘ DỮ LIỆU SINH VIÊN ===");
+        System.out.println("=== BẮT ĐẦU ĐỒNG BỘ DỮ LIỆU SINH VIÊN (THEO MÃ SINH VIÊN) ===");
         System.out.println("Tổng số phiếu điểm danh: " + totalRecords);
         
-        // Tạo map để cache thông tin sinh viên theo RFID
+        // Tạo map để cache thông tin sinh viên theo mã sinh viên
         Map<String, SinhVien> sinhVienMap = sinhVienRepository.findAll().stream()
             .collect(Collectors.toMap(
-                sv -> sv.getRfid() != null ? sv.getRfid().trim() : "",
+                sv -> sv.getMaSinhVien() != null ? sv.getMaSinhVien().trim() : "",
                 Function.identity(),
                 (existing, replacement) -> existing
             ));
@@ -378,41 +378,47 @@ public class AttendanceService {
         
         // Duyệt qua từng phiếu điểm danh và cập nhật
         for (PhieuDiemDanh attendance : allAttendance) {
-            if (attendance.getRfid() == null || attendance.getRfid().trim().isEmpty()) {
+            if (attendance.getMaSinhVien() == null || attendance.getMaSinhVien().trim().isEmpty()) {
                 notFoundRecords++;
                 continue;
             }
             
-            String trimmedRfid = attendance.getRfid().trim();
-            SinhVien sinhVien = sinhVienMap.get(trimmedRfid);
+            String trimmedMaSinhVien = attendance.getMaSinhVien().trim();
+            SinhVien sinhVien = sinhVienMap.get(trimmedMaSinhVien);
             
             if (sinhVien != null) {
                 // Kiểm tra xem có cần cập nhật không
                 boolean needsUpdate = false;
                 
-                if (!sinhVien.getMaSinhVien().equals(attendance.getMaSinhVien())) {
-                    attendance.setMaSinhVien(sinhVien.getMaSinhVien());
+                // Cập nhật tên sinh viên nếu khác
+                if (attendance.getTenSinhVien() == null || 
+                    !sinhVien.getTenSinhVien().equals(attendance.getTenSinhVien())) {
+                    attendance.setTenSinhVien(sinhVien.getTenSinhVien());
                     needsUpdate = true;
                 }
                 
-                if (!sinhVien.getTenSinhVien().equals(attendance.getTenSinhVien())) {
-                    attendance.setTenSinhVien(sinhVien.getTenSinhVien());
+                // Cập nhật RFID nếu khác hoặc null
+                String sinhVienRfid = sinhVien.getRfid() != null ? sinhVien.getRfid().trim() : "";
+                String attendanceRfid = attendance.getRfid() != null ? attendance.getRfid().trim() : "";
+                
+                if (!sinhVienRfid.equals(attendanceRfid)) {
+                    attendance.setRfid(sinhVien.getRfid());
                     needsUpdate = true;
                 }
                 
                 if (needsUpdate) {
                     phieuDiemDanhRepository.save(attendance);
                     updatedRecords++;
-                    System.out.println("Đã cập nhật: RFID=" + trimmedRfid + 
-                                     ", Mã SV: " + attendance.getMaSinhVien() + 
-                                     ", Tên: " + attendance.getTenSinhVien());
+                    System.out.println("Đã cập nhật: Mã SV=" + trimmedMaSinhVien + 
+                                     ", Tên: " + attendance.getTenSinhVien() + 
+                                     ", RFID: " + attendance.getRfid());
                 }
             } else {
                 notFoundRecords++;
-                if (!notFoundRfids.contains(trimmedRfid)) {
-                    notFoundRfids.add(trimmedRfid);
+                if (!notFoundMaSinhViens.contains(trimmedMaSinhVien)) {
+                    notFoundMaSinhViens.add(trimmedMaSinhVien);
                 }
-                System.out.println("Không tìm thấy sinh viên với RFID: " + trimmedRfid);
+                System.out.println("Không tìm thấy sinh viên với mã sinh viên: " + trimmedMaSinhVien);
             }
         }
         
@@ -424,7 +430,7 @@ public class AttendanceService {
         result.put("totalRecords", totalRecords);
         result.put("updatedRecords", updatedRecords);
         result.put("notFoundRecords", notFoundRecords);
-        result.put("notFoundRfids", notFoundRfids);
+        result.put("notFoundMaSinhViens", notFoundMaSinhViens);
         result.put("message", "Đồng bộ hoàn tất. Đã cập nhật " + updatedRecords + " bản ghi.");
         
         return result;

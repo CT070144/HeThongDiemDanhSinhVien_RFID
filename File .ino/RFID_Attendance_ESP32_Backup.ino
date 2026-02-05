@@ -80,7 +80,6 @@ String serverURL = "http://192.168.1.70:8080/api/attendance/rfid";
 
 // Device configuration (sẽ được lưu vào flash)
 String DEVICE_ID = "DEVICE_001";
-String API_KEY = ""; // API key cho ESP32
 
 // WiFiManager instance
 WiFiManager wm;
@@ -126,7 +125,6 @@ bool shouldSaveConfig = false; // Flag for saving config
 // Custom parameters for WiFiManager
 WiFiManagerParameter custom_device_id("device_id", "Device ID", "DEVICE_001", 20);
 WiFiManagerParameter custom_server_url("server_url", "Server URL", "http://192.168.1.70:8080/api/attendance/rfid", 100);
-WiFiManagerParameter custom_api_key("api_key", "API Key", "", 64);
  
  void setup() {
    Serial.begin(115200);
@@ -411,11 +409,6 @@ void loop() {
    http.begin(serverURL.c_str());
    http.addHeader("Content-Type", "application/json");
    
-   // Thêm API key vào header nếu có
-   if (API_KEY.length() > 0) {
-     http.addHeader("X-API-Key", API_KEY);
-   }
-   
   // Create JSON payload
   DynamicJsonDocument doc(1024);
   doc["rfid"] = rfid;
@@ -433,21 +426,6 @@ void loop() {
      String response = http.getString();
      Serial.println("HTTP Response Code: " + String(httpResponseCode));
      Serial.println("Server Response: " + response);
-     
-     // Kiểm tra nếu API key không hợp lệ
-     if (httpResponseCode == 401) {
-       isDisplayingMessage = true;
-       lcd.clear();
-       lcd.setCursor(0, 0);
-       lcd.print("API KEY ERROR");
-       lcd.setCursor(0, 1);
-       lcd.print("CHECK CONFIG");
-       beepError();
-       delay(3000);
-       isDisplayingMessage = false;
-       http.end();
-       return;
-     }
      
      // Parse JSON response regardless of HTTP status code
      DynamicJsonDocument responseDoc(1024);
@@ -662,7 +640,6 @@ void saveConfig() {
   preferences.putString("password", password);
   preferences.putString("device_id", DEVICE_ID);
   preferences.putString("server_url", serverURL);
-  preferences.putString("api_key", API_KEY);
   preferences.putBool("wifi_saved", true); // Flag to indicate WiFi is saved
   preferences.end();
   Serial.println("Configuration saved to flash");
@@ -670,7 +647,6 @@ void saveConfig() {
   Serial.println("Password: [HIDDEN]");
   Serial.println("Device ID: " + DEVICE_ID);
   Serial.println("Server URL: " + serverURL);
-  Serial.println("API Key: " + String(API_KEY.length() > 0 ? "[SAVED]" : "[NOT SET]"));
 }
 
 // Load configuration from flash memory
@@ -680,7 +656,6 @@ void loadConfig() {
   password = preferences.getString("password", "");
   DEVICE_ID = preferences.getString("device_id", "DEVICE_001");
   serverURL = preferences.getString("server_url", "http://192.168.1.70:8080/api/attendance/rfid");
-  API_KEY = preferences.getString("api_key", "");
   bool wifiSaved = preferences.getBool("wifi_saved", false);
   preferences.end();
   
@@ -689,7 +664,6 @@ void loadConfig() {
   Serial.println("Password: " + String(password.length() > 0 ? "[SAVED]" : "[NOT SAVED]"));
   Serial.println("Device ID: " + DEVICE_ID);
   Serial.println("Server URL: " + serverURL);
-  Serial.println("API Key: " + String(API_KEY.length() > 0 ? "[SAVED]" : "[NOT SAVED]"));
   Serial.println("WiFi Saved Flag: " + String(wifiSaved ? "YES" : "NO"));
 }
 
@@ -736,7 +710,6 @@ void setupWiFiManager() {
   // Add custom parameters
   wm.addParameter(&custom_device_id);
   wm.addParameter(&custom_server_url);
-  wm.addParameter(&custom_api_key);
   
   // Set custom hostname
   wm.setHostname("RFID-Device");
@@ -841,7 +814,6 @@ void setupWiFiManager() {
     // Update device settings
     DEVICE_ID = String(custom_device_id.getValue());
     serverURL = String(custom_server_url.getValue());
-    API_KEY = String(custom_api_key.getValue());
     
     // Update WiFi credentials from current connection
     ssid = WiFi.SSID();
@@ -856,7 +828,6 @@ void setupWiFiManager() {
     Serial.println("WiFi Password: [SAVED]");
     Serial.println("Device ID: " + DEVICE_ID);
     Serial.println("Server URL: " + serverURL);
-    Serial.println("API Key: " + String(API_KEY.length() > 0 ? "[SAVED]" : "[NOT SET]"));
     Serial.println("=========================================");
   }
   

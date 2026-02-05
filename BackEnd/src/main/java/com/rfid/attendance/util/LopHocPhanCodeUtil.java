@@ -5,7 +5,7 @@ import java.util.regex.Pattern;
 
 public class LopHocPhanCodeUtil {
 
-    public static String generateMaLopHocPhan(String tenLopHocPhan) {
+    public static String    generateMaLopHocPhan(String tenLopHocPhan) {
         if (tenLopHocPhan == null || tenLopHocPhan.isBlank()) {
             return "";
         }

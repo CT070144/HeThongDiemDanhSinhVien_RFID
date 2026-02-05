@@ -176,16 +176,16 @@ public class AttendanceController {
     }
     
     /**
-     * API đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên RFID
-     * Cập nhật masinhvien và tensinhvien trong phieudiemdanh từ dữ liệu trong sinhvien
+     * API đồng bộ dữ liệu từ bảng sinhvien sang phieudiemdanh dựa trên mã sinh viên
+     * Cập nhật tensinhvien và rfid trong phieudiemdanh từ dữ liệu trong sinhvien
      * 
      * @return ResponseEntity chứa thống kê kết quả đồng bộ
      */
     @PostMapping("/sync-student-info")
-    public ResponseEntity<?> syncStudentInfoFromRfid() {
+    public ResponseEntity<?> syncStudentInfoFromMaSinhVien() {
         try {
-            System.out.println("=== API ĐỒNG BỘ DỮ LIỆU SINH VIÊN ===");
-            Map<String, Object> result = attendanceService.syncStudentInfoFromRfid();
+            System.out.println("=== API ĐỒNG BỘ DỮ LIỆU SINH VIÊN (THEO MÃ SINH VIÊN) ===");
+            Map<String, Object> result = attendanceService.syncStudentInfoFromMaSinhVien();
             return ResponseEntity.ok(result);
         } catch (Exception e) {
             System.err.println("Lỗi khi đồng bộ dữ liệu: " + e.getMessage());

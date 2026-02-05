@@ -15,11 +15,15 @@ public class ThietBi {
     @NotBlank
     private String phongHoc;
 
+    @Column(name = "active")
+    private Boolean active = true;
+
     public ThietBi() {}
 
     public ThietBi(String maThietBi, String phongHoc) {
         this.maThietBi = maThietBi;
         this.phongHoc = phongHoc;
+        this.active = true;
     }
 
     public String getMaThietBi() {
@@ -36,6 +40,14 @@ public class ThietBi {
 
     public void setPhongHoc(String phongHoc) {
         this.phongHoc = phongHoc;
+    }
+
+    public Boolean getActive() {
+        return active;
+    }
+
+    public void setActive(Boolean active) {
+        this.active = active;
     }
 }
 

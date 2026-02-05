@@ -23,17 +23,18 @@
     "react-router-bootstrap": "^0.26.3",
     "react-router-dom": "^6.3.0",
     "react-scripts": "^5.0.1",
+    "react-snowfall": "^2.4.0",
     "react-toastify": "^9.0.8",
     "socket.io-client": "^2.3.1",
     "web-vitals": "^2.1.4",
     "xlsx": "^0.18.5"
   },
-  "scripts": {
-    "start": "set DANGEROUSLY_DISABLE_HOST_CHECK=true && react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
-  },
+ "scripts": {
+  "start": "react-scripts start",
+  "build": "react-scripts build",
+  "test": "react-scripts test",
+  "eject": "react-scripts eject"
+},
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -54,6 +55,7 @@
   },
   "proxy": "http://localhost:8080",
   "devDependencies": {
+    "baseline-browser-mapping": "^2.9.19",
     "react-app-rewired": "^2.2.1"
   }
 }

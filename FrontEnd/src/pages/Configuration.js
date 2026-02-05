@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner, Pagination } from 'react-bootstrap';
 import { attendanceAPI, studentAPI, deviceAPI, roomAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
-import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch } from 'react-icons/fa';
+import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch, FaEye, FaEyeSlash, FaKey, FaInfo } from 'react-icons/fa';
 
 const SettingsPage = () => {
   const { notify } = useNotification();
@@ -31,6 +31,12 @@ const SettingsPage = () => {
     loaiPhong: '',
     trangThai: 'active',
   });
+  // Device details modal state
+  const [showDeviceDetailsModal, setShowDeviceDetailsModal] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  const [deviceApiKeys, setDeviceApiKeys] = useState([]);
+  const [visibleApiKeys, setVisibleApiKeys] = useState(new Set());
+  const [showNewApiKeyAlert, setShowNewApiKeyAlert] = useState(null);
 
   useEffect(() => {
     loadUnprocessedRfids();
@@ -74,11 +80,6 @@ const SettingsPage = () => {
     } catch (e) {}
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
-    notify.success('Đã copy RFID');
-  };
-
   const handleDeleteUnregistered = async (id) => {
     try {
       // reuse markProcessed as delete not provided; ideally have delete API
@@ -112,8 +113,13 @@ const SettingsPage = () => {
       return;
     }
     try {
-      await deviceAPI.create({ maThietBi: newDevice.maThietBi, phongHoc: newDevice.phongHoc });
+      const res = await deviceAPI.create({ maThietBi: newDevice.maThietBi, phongHoc: newDevice.phongHoc });
       notify.success('Đã tạo thiết bị');
+      // Show API key alert
+      if (res.data.apiKey) {
+        setShowNewApiKeyAlert(res.data.apiKey);
+        setTimeout(() => setShowNewApiKeyAlert(null), 10000); // Auto close after 10 seconds
+      }
       setNewDevice({ maThietBi: '', phongHoc: '' });
       loadDevices();
     } catch (e) {
@@ -131,6 +137,85 @@ const SettingsPage = () => {
     } catch (e) {
       // silent
     }
+  };
+
+  // Device management functions
+  const handleViewDeviceDetails = async (device) => {
+    setSelectedDevice(device);
+    setShowDeviceDetailsModal(true);
+    setVisibleApiKeys(new Set());
+    try {
+      const res = await deviceAPI.getApiKeys(device.maThietBi);
+      setDeviceApiKeys(res.data || []);
+    } catch (e) {
+      notify.error('Không thể tải API keys');
+    }
+  };
+
+  const handleToggleDeviceStatus = async (maThietBi) => {
+    try {
+      const res = await deviceAPI.toggleStatus(maThietBi);
+      const updated = res.data;
+      setSelectedDevice(updated);
+      setDevices(devices.map(d => d.maThietBi === maThietBi ? updated : d));
+      notify.success(updated.active ? 'Thiết bị đã kích hoạt' : 'Thiết bị đã vô hiệu hóa');
+    } catch (e) {
+      notify.error('Không thể thay đổi trạng thái thiết bị');
+    }
+  };
+
+  const handleCreateNewApiKey = async () => {
+    if (!selectedDevice) return;
+    try {
+      const res = await deviceAPI.createApiKey(selectedDevice.maThietBi, { 
+        moTa: `API key - ${new Date().toLocaleString('vi-VN')}` 
+      });
+      setDeviceApiKeys([...deviceApiKeys, res.data.apiKey]);
+      setShowNewApiKeyAlert(res.data.keyValue);
+      notify.success('Đã tạo API key mới');
+      setTimeout(() => setShowNewApiKeyAlert(null), 10000);
+    } catch (e) {
+      notify.error('Không thể tạo API key mới');
+    }
+  };
+
+  const handleToggleApiKeyVisibility = (keyId) => {
+    const newVisible = new Set(visibleApiKeys);
+    if (newVisible.has(keyId)) {
+      newVisible.delete(keyId);
+    } else {
+      newVisible.add(keyId);
+    }
+    setVisibleApiKeys(newVisible);
+  };
+
+  const handleToggleApiKeyStatus = async (keyId) => {
+    try {
+      await deviceAPI.toggleApiKeyStatus(keyId);
+      const updated = deviceApiKeys.map(k => 
+        k.id === keyId ? { ...k, active: !k.active } : k
+      );
+      setDeviceApiKeys(updated);
+      notify.success('Trạng thái API key đã cập nhật');
+    } catch (e) {
+      notify.error('Không thể cập nhật API key');
+    }
+  };
+
+  const handleDeleteApiKey = async (keyId) => {
+    if (!window.confirm('Bạn có chắc muốn xóa API key này?')) return;
+    try {
+      await deviceAPI.deleteApiKey(keyId);
+      setDeviceApiKeys(deviceApiKeys.filter(k => k.id !== keyId));
+      notify.success('API key đã xóa');
+    } catch (e) {
+      notify.error('Không thể xóa API key');
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    notify.success('Đã sao chép vào clipboard');
   };
 
   const resetRoomForm = () => {
@@ -524,6 +609,8 @@ const SettingsPage = () => {
                         <tr>
                           <th style={{ fontWeight: '600' }}>Mã thiết bị</th>
                           <th style={{ fontWeight: '600' }}>Phòng học</th>
+                          <th style={{ fontWeight: '600' }}>Trạng thái</th>
+                          <th style={{ fontWeight: '600', textAlign: 'center' }}>Thao tác</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -535,6 +622,22 @@ const SettingsPage = () => {
                               </Badge>
                             </td>
                             <td style={{ fontWeight: '500' }}>{d.phongHoc}</td>
+                            <td>
+                              <Badge bg={d.active ? 'success' : 'secondary'} style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                {d.active ? 'Hoạt động' : 'Không hoạt động'}
+                              </Badge>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <Button 
+                                variant="outline-primary" 
+                                size="sm"
+                                onClick={() => handleViewDeviceDetails(d)}
+                                className="shadow-sm"
+                              >
+                                <FaInfo className="me-1" />
+                                Chi tiết
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -891,6 +994,207 @@ const SettingsPage = () => {
               Copy RFID
             </Button>
           )}
+        </Modal.Footer>
+      </Modal>
+
+      {/* New API Key Alert */}
+      {showNewApiKeyAlert && (
+        <Alert 
+          variant="success" 
+          dismissible 
+          onClose={() => setShowNewApiKeyAlert(null)}
+          style={{
+            position: 'fixed',
+            top: 20,
+            right: 20,
+            zIndex: 9999,
+            maxWidth: '500px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+          }}
+        >
+          <Alert.Heading className="d-flex align-items-center mb-3">
+            <FaKey className="me-2" />
+            API Key mới được tạo
+          </Alert.Heading>
+          <p className="mb-3 fw-semibold text-danger">
+            ⚠️ Lưu API key này ngay! Bạn sẽ không thể xem lại nó.
+          </p>
+          <div className="bg-light p-3 rounded mb-3 position-relative" style={{ wordBreak: 'break-all', fontSize: '0.85rem', fontFamily: 'monospace' }}>
+            {showNewApiKeyAlert}
+            <Button 
+              variant="outline-secondary"
+              size="sm"
+              onClick={() => copyToClipboard(showNewApiKeyAlert)}
+              style={{ position: 'absolute', top: 10, right: 10 }}
+            >
+              <FaCopy />
+            </Button>
+          </div>
+          <small className="text-muted">Cửa sổ này sẽ tự đóng trong vài giây.</small>
+        </Alert>
+      )}
+
+      {/* Device Details Modal */}
+      <Modal show={showDeviceDetailsModal} onHide={() => setShowDeviceDetailsModal(false)} size="lg">
+        <Modal.Header closeButton className="bg-primary text-white" style={{ border: 'none' }}>
+          <Modal.Title className="d-flex align-items-center">
+            <FaDesktop className="me-2" />
+            Chi tiết thiết bị: {selectedDevice?.maThietBi}
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-4">
+          {selectedDevice && (
+            <>
+              {/* Device Information */}
+              <div className="mb-4 p-3 bg-light rounded border">
+                <div className="row">
+                  <div className="col-md-6">
+                    <p className="mb-2">
+                      <strong>Mã thiết bị:</strong>
+                      <Badge bg="primary" className="ms-2">{selectedDevice.maThietBi}</Badge>
+                    </p>
+                  </div>
+                  <div className="col-md-6">
+                    <p className="mb-2">
+                      <strong>Phòng học:</strong>
+                      <span className="ms-2">{selectedDevice.phongHoc}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="row mt-3">
+                  <div className="col-md-6">
+                    <p className="mb-0">
+                      <strong>Trạng thái:</strong>
+                      <Badge bg={selectedDevice.active ? 'success' : 'secondary'} className="ms-2">
+                        {selectedDevice.active ? 'Hoạt động' : 'Không hoạt động'}
+                      </Badge>
+                    </p>
+                  </div>
+                  <div className="col-md-6">
+                    <Button
+                      variant={selectedDevice.active ? 'outline-danger' : 'outline-success'}
+                      size="sm"
+                      onClick={() => handleToggleDeviceStatus(selectedDevice.maThietBi)}
+                    >
+                      {selectedDevice.active ? 'Vô hiệu hóa' : 'Kích hoạt'}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* API Keys Section */}
+              <div className="mb-4">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <h6 className="mb-0 d-flex align-items-center">
+                    <FaKey className="me-2" />
+                    Danh sách API Keys ({deviceApiKeys.length})
+                  </h6>
+                  <Button
+                    variant="success"
+                    size="sm"
+                    onClick={handleCreateNewApiKey}
+                  >
+                    <FaPlus className="me-1" />
+                    Tạo API Key mới
+                  </Button>
+                </div>
+
+                {deviceApiKeys.length > 0 ? (
+                  <div className="table-responsive">
+                    <Table striped hover className="mb-0" style={{ fontSize: '0.9rem' }}>
+                      <thead className="table-light">
+                        <tr>
+                          <th>ID</th>
+                          <th>API Key</th>
+                          <th>Mô tả</th>
+                          <th>Trạng thái</th>
+                          <th style={{ textAlign: 'center' }}>Thao tác</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {deviceApiKeys.map(key => (
+                          <tr key={key.id} style={{ verticalAlign: 'middle' }}>
+                            <td>{key.id}</td>
+                            <td>
+                              <code className="bg-light px-2 py-1 rounded" style={{ fontSize: '0.8rem', wordBreak: 'break-all' }}>
+                                {visibleApiKeys.has(key.id) ? key.apiKey : '••••••••••••••••'}
+                              </code>
+                              <Button
+                                variant="link"
+                                size="sm"
+                                onClick={() => handleToggleApiKeyVisibility(key.id)}
+                                className="ms-2 p-0 text-decoration-none"
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                {visibleApiKeys.has(key.id) ? (
+                                  <>
+                                    <FaEyeSlash className="me-1" />
+                                    Ẩn
+                                  </>
+                                ) : (
+                                  <>
+                                    <FaEye className="me-1" />
+                                    Hiện
+                                  </>
+                                )}
+                              </Button>
+                              {visibleApiKeys.has(key.id) && (
+                                <Button
+                                  variant="link"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(key.apiKey)}
+                                  className="ms-1 p-0 text-decoration-none"
+                                  style={{ fontSize: '0.85rem' }}
+                                >
+                                  <FaCopy className="me-1" />
+                                  Sao chép
+                                </Button>
+                              )}
+                            </td>
+                            <td>{key.moTa || '-'}</td>
+                            <td>
+                              <Badge bg={key.active ? 'success' : 'secondary'} style={{ fontSize: '0.8rem' }}>
+                                {key.active ? 'Active' : 'Inactive'}
+                              </Badge>
+                            </td>
+                            <td style={{ textAlign: 'center' }}>
+                              <Button
+                                variant={key.active ? 'outline-warning' : 'outline-success'}
+                                size="sm"
+                                onClick={() => handleToggleApiKeyStatus(key.id)}
+                                className="me-2"
+                                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                              >
+                                {key.active ? 'Vô hiệu' : 'Kích hoạt'}
+                              </Button>
+                              <Button
+                                variant="outline-danger"
+                                size="sm"
+                                onClick={() => handleDeleteApiKey(key.id)}
+                                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+                              >
+                                <FaTrash />
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </div>
+                ) : (
+                  <Alert variant="info" className="mb-0">
+                    <FaKey className="me-2" />
+                    Chưa có API key nào. Tạo API key mới để kích hoạt thiết bị.
+                  </Alert>
+                )}
+              </div>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowDeviceDetailsModal(false)}>
+            Đóng
+          </Button>
         </Modal.Footer>
       </Modal>
     </Container>

@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
 import ta1Background from '../assets/ta1-background.jpg';
-
+import SnowFall from 'react-snowfall';
+import image from '../assets/snow.png';
 const Login = () => {
   const [formData, setFormData] = useState({
     username: '',
@@ -69,6 +70,7 @@ const Login = () => {
       display: 'flex',
       alignItems: 'center'
     }}>
+      <SnowFall color="#00ddff" snowflakeCount={280} />
       {/* Overlay để làm tối background */}
       <div style={{
         position: 'absolute',
