@@ -207,7 +207,7 @@ const Dashboard = () => {
     if (!socketRef.current) {
       console.log("Initializing socket connection...");
 
-      const connectionUrl = "http://localhost:8099";
+      const connectionUrl = process.env.REACT_APP_SOCKET_URL || "http://localhost:8099";
 
       socketRef.current = io(connectionUrl, {
         path: "/socket.io",

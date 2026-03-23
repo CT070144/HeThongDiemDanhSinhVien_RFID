@@ -7,6 +7,7 @@ WORKDIR /app
 # 1. Copy các file cấu hình Maven Wrapper
 COPY .mvn/ .mvn
 COPY mvnw pom.xml ./
+RUN chmod +x mvnw
 
 # 2. Tải toàn bộ dependencies (Tận dụng Cache Layer)
 RUN ./mvnw dependency:go-offline
