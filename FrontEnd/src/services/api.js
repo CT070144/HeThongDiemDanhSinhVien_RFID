@@ -101,11 +101,15 @@ export const deviceAPI = {
   create: (data) => api.post('/thietbi', data),
   update: (maThietBi, data) => api.put(`/thietbi/${maThietBi}`, data),
   toggleStatus: (maThietBi) => api.patch(`/thietbi/${maThietBi}/toggle-status`),
+  activate: (maThietBi) => api.patch(`/thietbi/${maThietBi}/activate`),
+  deactivate: (maThietBi) => api.patch(`/thietbi/${maThietBi}/deactivate`),
   delete: (maThietBi) => api.delete(`/thietbi/${maThietBi}`),
   // API Key management
   getApiKeys: (maThietBi) => api.get(`/thietbi/${maThietBi}/api-keys`),
   createApiKey: (maThietBi, data) => api.post(`/thietbi/${maThietBi}/api-keys`, data),
   toggleApiKeyStatus: (id) => api.patch(`/thietbi/api-keys/${id}/toggle`),
+  activateApiKey: (id) => api.patch(`/thietbi/api-keys/${id}/activate`),
+  deactivateApiKey: (id) => api.patch(`/thietbi/api-keys/${id}/deactivate`),
   revokeApiKey: (id) => api.patch(`/thietbi/api-keys/${id}/revoke`),
   deleteApiKey: (id) => api.delete(`/thietbi/api-keys/${id}`),
 };

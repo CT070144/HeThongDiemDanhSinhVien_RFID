@@ -161,8 +161,24 @@ public class ThietBiController {
         return ResponseEntity.notFound().build();
     }
 
+    @PatchMapping("/api-keys/{id}/activate")
+    public ResponseEntity<?> activateApiKey(@PathVariable Long id) {
+        if (apiKeyService.activateApiKey(id)) {
+            return ResponseEntity.ok(Map.of("success", true));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
     @PatchMapping("/api-keys/{id}/revoke")
     public ResponseEntity<?> revokeApiKey(@PathVariable Long id) {
+        if (apiKeyService.revokeApiKey(id)) {
+            return ResponseEntity.ok(Map.of("success", true));
+        }
+        return ResponseEntity.notFound().build();
+    }
+
+    @PatchMapping("/api-keys/{id}/deactivate")
+    public ResponseEntity<?> deactivateApiKey(@PathVariable Long id) {
         if (apiKeyService.revokeApiKey(id)) {
             return ResponseEntity.ok(Map.of("success", true));
         }

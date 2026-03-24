@@ -167,10 +167,25 @@ const SettingsPage = () => {
 
   const handleToggleDeviceStatus = async (maThietBi) => {
     try {
-      const res = await deviceAPI.toggleStatus(maThietBi);
+      const currentDevice = devices.find(d => d.maThietBi === maThietBi) || selectedDevice;
+      const res = currentDevice?.active
+        ? await deviceAPI.deactivate(maThietBi)
+        : await deviceAPI.activate(maThietBi);
       const updated = res.data;
       setSelectedDevice(updated);
       setDevices(devices.map(d => d.maThietBi === maThietBi ? updated : d));
+
+      // Khi trạng thái thiết bị đổi, backend có thể đã đổi trạng thái API key.
+      // Refresh lại danh sách API key để đồng bộ đúng dữ liệu hiển thị.
+      if (showDeviceDetailsModal && selectedDevice?.maThietBi === maThietBi) {
+        try {
+          const apiKeysRes = await deviceAPI.getApiKeys(maThietBi);
+          setDeviceApiKeys(apiKeysRes.data || []);
+        } catch (apiKeyError) {
+          notify.error('Đã đổi trạng thái thiết bị nhưng không tải được danh sách API key mới');
+        }
+      }
+
       notify.success(updated.active ? 'Thiết bị đã kích hoạt' : 'Thiết bị đã vô hiệu hóa');
     } catch (e) {
       notify.error('Không thể thay đổi trạng thái thiết bị');
@@ -204,7 +219,16 @@ const SettingsPage = () => {
 
   const handleToggleApiKeyStatus = async (keyId) => {
     try {
-      await deviceAPI.toggleApiKeyStatus(keyId);
+      const currentKey = deviceApiKeys.find(k => k.id === keyId);
+      if (!currentKey) {
+        notify.error('Không tìm thấy API key');
+        return;
+      }
+      if (currentKey.active) {
+        await deviceAPI.deactivateApiKey(keyId);
+      } else {
+        await deviceAPI.activateApiKey(keyId);
+      }
       const updated = deviceApiKeys.map(k => 
         k.id === keyId ? { ...k, active: !k.active } : k
       );
