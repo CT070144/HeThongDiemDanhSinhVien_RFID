@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar, Spinner, InputGroup } from 'react-bootstrap';
 import { toast } from 'react-toastify';
-import { studentAPI, attendanceAPI } from '../services/api';
+import { studentAPI, attendanceAPI, phongBanAPI } from '../services/api';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
-import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode, FaCheckCircle } from 'react-icons/fa';
+import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode, FaCheckCircle, FaList } from 'react-icons/fa';
 
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
@@ -19,7 +19,8 @@ const StudentManagement = () => {
   const [formData, setFormData] = useState({
     maSinhVien: '',
     rfid: '',
-    tenSinhVien: ''
+    tenSinhVien: '',
+    maPhongBan: ''
   });
   const [loading, setLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
@@ -30,10 +31,22 @@ const StudentManagement = () => {
   const [latestRfid, setLatestRfid] = useState(null);
   const [rfidStatus, setRfidStatus] = useState(null); // 'new', 'exists', 'current'
   const [isDraggingImport, setIsDraggingImport] = useState(false);
+  const [phongBans, setPhongBans] = useState([]);
+  const [showPhongBanManageModal, setShowPhongBanManageModal] = useState(false);
+  const [phongBanForm, setPhongBanForm] = useState({
+    maPhongBan: '',
+    tenPhongBan: '',
+    moTa: ''
+  });
+  const [editingPhongBan, setEditingPhongBan] = useState(null);
+  const [savingPhongBan, setSavingPhongBan] = useState(false);
+  const [showPhongBanModal, setShowPhongBanModal] = useState(false);
+  const [phongBanSearch, setPhongBanSearch] = useState('');
 
   useEffect(() => {
     loadStudents();
     loadLopHocPhans();
+    loadPhongBans();
   }, []);
 
   // Effect để quét RFID khi modal mở
@@ -66,7 +79,7 @@ const StudentManagement = () => {
                 ...prev,
                 rfid: latestUnprocessed.rfid
               }));
-              toast.warning(`RFID ${latestUnprocessed.rfid} đã được đăng ký cho sinh viên: ${existingStudent.data.tenSinhVien} (${existingStudent.data.maSinhVien}). Hãy thử thẻ khác.`);
+              toast.warning(`RFID ${latestUnprocessed.rfid} đã được đăng ký cho nhân viên: ${existingStudent.data.tenSinhVien} (${existingStudent.data.maSinhVien}). Hãy thử thẻ khác.`);
               // Không dừng quét khi RFID đã đăng ký, để người dùng có thể thử thẻ khác
             } else {
               // RFID chưa được đăng ký
@@ -110,6 +123,17 @@ const StudentManagement = () => {
     }
   };
 
+  const loadPhongBans = async () => {
+    try {
+      const response = await phongBanAPI.getAll();
+      const data = response.data || [];
+      setPhongBans(data.sort((a, b) => (a.maPhongBan || '').localeCompare(b.maPhongBan || '')));
+    } catch (error) {
+      console.error('Error loading phong ban:', error);
+      setPhongBans([]);
+    }
+  };
+
   const filterStudents = useCallback(async () => {
     let filtered = students;
     
@@ -146,7 +170,7 @@ const StudentManagement = () => {
       setStudents(response.data);
       setPage(1);
     } catch (error) {
-      toast.error('Lỗi khi tải danh sách sinh viên');
+      toast.error('Lỗi khi tải danh sách nhân viên');
     }
   };
 
@@ -172,22 +196,22 @@ const StudentManagement = () => {
     try {
       // Kiểm tra RFID đã được đăng ký chưa (chỉ khi thêm mới hoặc thay đổi RFID)
       if (rfidStatus === 'exists' && (!editingStudent || formData.rfid !== editingStudent.rfid)) {
-        toast.error('RFID này đã được đăng ký cho sinh viên khác. Vui lòng chọn RFID khác.');
+        toast.error('RFID này đã được đăng ký cho nhân viên khác. Vui lòng chọn RFID khác.');
         setLoading(false);
         return;
       }
 
       if (editingStudent) {
-        // Sử dụng mã sinh viên làm khóa chính cho update
+        // Sử dụng mã nhân viên làm khóa chính cho update
         await studentAPI.update(editingStudent.maSinhVien, formData);
-        toast.success('Cập nhật sinh viên thành công');
+        toast.success('Cập nhật nhân viên thành công');
       } else {
         await studentAPI.create(formData);
-        toast.success('Thêm sinh viên thành công');
+        toast.success('Thêm nhân viên thành công');
       }
       
       handleCloseModal();
-      setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '' });
+      setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '', maPhongBan: '' });
       setEditingStudent(null);
       loadStudents();
     } catch (error) {
@@ -202,33 +226,104 @@ const StudentManagement = () => {
     setFormData({
       maSinhVien: student.maSinhVien,
       rfid: student.rfid,
-      tenSinhVien: student.tenSinhVien
+      tenSinhVien: student.tenSinhVien,
+      maPhongBan: student.maPhongBan || ''
     });
     setLatestRfid(null);
-    setRfidStatus('current'); // RFID hiện tại của sinh viên đang sửa
+    setRfidStatus('current'); // RFID hiện tại của nhân viên đang sửa
     setScanning(false);
     setShowModal(true);
   };
 
   const handleDelete = async (maSinhVien) => {
-    if (window.confirm('Bạn có chắc chắn muốn xóa sinh viên này?')) {
+    if (window.confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
       try {
         await studentAPI.delete(maSinhVien);
-        toast.success('Xóa sinh viên thành công');
+        toast.success('Xóa nhân viên thành công');
         loadStudents();
       } catch (error) {
-        toast.error('Lỗi khi xóa sinh viên! Ràng buộc liên quan');
+        toast.error('Lỗi khi xóa nhân viên! Ràng buộc liên quan');
       }
     }
   };
 
   const handleAddNew = () => {
     setEditingStudent(null);
-    setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '' });
+    setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '', maPhongBan: '' });
     setLatestRfid(null);
     setRfidStatus(null);
     setScanning(false);
     setShowModal(true);
+  };
+
+  const resetPhongBanForm = () => {
+    setPhongBanForm({ maPhongBan: '', tenPhongBan: '', moTa: '' });
+    setEditingPhongBan(null);
+  };
+
+  const openCreatePhongBanModal = () => {
+    resetPhongBanForm();
+    setShowPhongBanManageModal(true);
+  };
+
+  const handleEditPhongBan = (pb) => {
+    setEditingPhongBan(pb.maPhongBan);
+    setPhongBanForm({
+      maPhongBan: pb.maPhongBan || '',
+      tenPhongBan: pb.tenPhongBan || '',
+      moTa: pb.moTa || ''
+    });
+    setShowPhongBanManageModal(true);
+  };
+
+  const handleSavePhongBan = async () => {
+    if (!phongBanForm.maPhongBan.trim() || !phongBanForm.tenPhongBan.trim()) {
+      toast.error('Vui lòng nhập mã phòng ban và tên phòng ban');
+      return;
+    }
+    setSavingPhongBan(true);
+    try {
+      if (editingPhongBan) {
+        await phongBanAPI.update(editingPhongBan, {
+          tenPhongBan: phongBanForm.tenPhongBan.trim(),
+          moTa: phongBanForm.moTa.trim()
+        });
+        toast.success('Cập nhật phòng ban thành công');
+      } else {
+        await phongBanAPI.create({
+          maPhongBan: phongBanForm.maPhongBan.trim(),
+          tenPhongBan: phongBanForm.tenPhongBan.trim(),
+          moTa: phongBanForm.moTa.trim()
+        });
+        setFormData((prev) => ({ ...prev, maPhongBan: phongBanForm.maPhongBan.trim() }));
+        toast.success('Thêm phòng ban thành công');
+      }
+      await loadPhongBans();
+      resetPhongBanForm();
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Không thể lưu phòng ban');
+    } finally {
+      setSavingPhongBan(false);
+    }
+  };
+
+  const handleDeletePhongBan = async (maPhongBan) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa phòng ban ${maPhongBan}?`)) {
+      return;
+    }
+    try {
+      await phongBanAPI.delete(maPhongBan);
+      await loadPhongBans();
+      if (formData.maPhongBan === maPhongBan) {
+        setFormData((prev) => ({ ...prev, maPhongBan: '' }));
+      }
+      if (editingPhongBan === maPhongBan) {
+        resetPhongBanForm();
+      }
+      toast.success('Xóa phòng ban thành công');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Không thể xóa phòng ban');
+    }
   };
 
   const handleFileChange = (e) => {
@@ -294,7 +389,7 @@ const StudentManagement = () => {
           const maSinhVienIndex = headers.findIndex(h => {
             if (!h) return false;
             const header = h.toString().toLowerCase().trim();
-            return header.includes('mã sinh viên') || 
+            return header.includes('mã nhân viên') || 
                    header.includes('masinhvien') || 
                    header.includes('student id') ||
                    header.includes('ma_sinh_vien');
@@ -305,7 +400,7 @@ const StudentManagement = () => {
             const header = h.toString().toLowerCase().trim();
             return header.includes('họ và tên') || 
                    header.includes('hovaten') || 
-                   header.includes('tên sinh viên') ||
+                   header.includes('tên nhân viên') ||
                    header.includes('tensinhvien') ||
                    header.includes('full name') ||
                    header.includes('ho va ten') ||
@@ -317,14 +412,25 @@ const StudentManagement = () => {
             const header = h.toString().toLowerCase().trim();
             return header.includes('rfid');
           });
+
+          const maPhongBanIndex = headers.findIndex(h => {
+            if (!h) return false;
+            const header = h.toString().toLowerCase().trim();
+            return header.includes('mã phòng ban') ||
+                   header.includes('maphongban') ||
+                   header.includes('ma phong ban') ||
+                   header.includes('department code') ||
+                   header.includes('phong ban');
+          });
           
-          console.log('Column indices:', { maSinhVienIndex, tenSinhVienIndex, rfidIndex });
+          console.log('Column indices:', { maSinhVienIndex, tenSinhVienIndex, rfidIndex, maPhongBanIndex });
           
-          if (maSinhVienIndex === -1 || tenSinhVienIndex === -1 || rfidIndex === -1) {
+          if (maSinhVienIndex === -1 || tenSinhVienIndex === -1 || rfidIndex === -1 || maPhongBanIndex === -1) {
             const missingColumns = [];
-            if (maSinhVienIndex === -1) missingColumns.push('Mã sinh viên');
+            if (maSinhVienIndex === -1) missingColumns.push('Mã nhân viên');
             if (tenSinhVienIndex === -1) missingColumns.push('Họ và tên');
             if (rfidIndex === -1) missingColumns.push('RFID');
+            if (maPhongBanIndex === -1) missingColumns.push('Mã phòng ban');
             
             reject(new Error('Dữ liệu trong file không đúng định dạng'));
             return;
@@ -340,7 +446,8 @@ const StudentManagement = () => {
               const student = {
                 maSinhVien: row[maSinhVienIndex].toString().trim(),
                 tenSinhVien: row[tenSinhVienIndex].toString().trim(),
-                rfid: row[rfidIndex].toString().trim()
+                rfid: row[rfidIndex].toString().trim(),
+                maPhongBan: row[maPhongBanIndex] ? row[maPhongBanIndex].toString().trim() : ''
               };
               console.log(`Parsed student ${i}:`, student);
               students.push(student);
@@ -348,7 +455,8 @@ const StudentManagement = () => {
               console.log(`Row ${i} skipped - missing data:`, {
                 maSinhVien: row?.[maSinhVienIndex],
                 tenSinhVien: row?.[tenSinhVienIndex],
-                rfid: row?.[rfidIndex]
+                rfid: row?.[rfidIndex],
+                maPhongBan: row?.[maPhongBanIndex]
               });
             }
           }
@@ -390,6 +498,39 @@ const StudentManagement = () => {
         return;
       }
       
+      // Tự tạo mới phòng ban nếu mã phòng ban trong file chưa tồn tại
+      const currentPhongBanCodes = new Set(
+        (phongBans || [])
+          .map(pb => (pb.maPhongBan || '').trim())
+          .filter(Boolean)
+      );
+      const importPhongBanCodes = Array.from(
+        new Set(
+          students
+            .map(s => (s.maPhongBan || '').trim())
+            .filter(Boolean)
+        )
+      );
+      const missingPhongBanCodes = importPhongBanCodes.filter(code => !currentPhongBanCodes.has(code));
+
+      for (const code of missingPhongBanCodes) {
+        try {
+          await phongBanAPI.create({
+            maPhongBan: code,
+            tenPhongBan: `Phòng ban ${code}`,
+            moTa: 'Tạo tự động từ import Excel'
+          });
+        } catch (error) {
+          const message = error?.response?.data?.message || error?.response?.data || '';
+          if (!String(message).toLowerCase().includes('đã tồn tại')) {
+            throw error;
+          }
+        }
+      }
+      if (missingPhongBanCodes.length > 0) {
+        await loadPhongBans();
+      }
+
       // Gửi dữ liệu lên server
       const response = await studentAPI.bulkUpdateRfid(students);
       const result = response.data;
@@ -398,14 +539,17 @@ const StudentManagement = () => {
       
       // Hiển thị kết quả
       if (result.successCount > 0) {
-        toast.success(`Cập nhật thành công ${result.successCount} sinh viên`);
+        const msg = missingPhongBanCodes.length > 0
+          ? `Cập nhật thành công ${result.successCount} nhân viên, đã tạo ${missingPhongBanCodes.length} phòng ban mới`
+          : `Cập nhật thành công ${result.successCount} nhân viên`;
+        toast.success(msg);
       }
       
       if (result.failureCount > 0) {
-        toast.error(`${result.failureCount} sinh viên cập nhật thất bại`);
+        toast.error(`${result.failureCount} nhân viên cập nhật thất bại`);
       }
       
-      // Reload danh sách sinh viên
+      // Reload danh sách nhân viên
       loadStudents();
       
     } catch (error) {
@@ -430,8 +574,20 @@ const StudentManagement = () => {
     setRfidStatus(null);
   };
 
+  const modalPrimaryStyle = {
+    backgroundColor: '#212529',
+    borderColor: '#212529',
+    color: '#fff'
+  };
+
   return (
-    <Container className="py-4" >
+    <Container
+      className="py-4"
+      style={{
+        '--bs-primary': '#212529',
+        '--bs-primary-rgb': '33, 37, 41'
+      }}
+    >
       <style>{`
         @keyframes sweep {
           0% { left: -40%; }
@@ -446,7 +602,7 @@ const StudentManagement = () => {
           width: 8px; 
           height: 8px; 
           border-radius: 50%; 
-          background: #0d6efd; 
+          background: #212529; 
           display: inline-block; 
           animation: pulse 1.2s infinite ease-in-out; 
         }
@@ -459,7 +615,7 @@ const StudentManagement = () => {
             <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
               <h3 className="mb-0 d-flex align-items-center">
                 <FaUsers className="me-2" />
-                SINH VIÊN
+                Thông tin nhân viên
               </h3>
               <div>
                 <Button 
@@ -495,7 +651,7 @@ const StudentManagement = () => {
                     </Form.Label>
                     <Form.Control
                       type="text"
-                      placeholder="Tìm kiếm theo mã sinh viên hoặc tên..."
+                      placeholder="Tìm kiếm theo mã nhân viên hoặc tên..."
                       value={searchKeyword}
                       onChange={(e) => setSearchKeyword(e.target.value)}
                       className="shadow-sm"
@@ -510,9 +666,10 @@ const StudentManagement = () => {
                 <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
                   <thead className="table-primary">
                     <tr>
-                      <th style={{textAlign:'left', fontWeight: '600'}}>Mã sinh viên</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Mã nhân viên</th>
                       <th style={{textAlign:'left', fontWeight: '600'}}>RFID</th>
-                      <th style={{textAlign:'left', fontWeight: '600'}}>Tên sinh viên</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Tên nhân viên</th>
+                      <th style={{textAlign:'left', fontWeight: '600'}}>Mã phòng ban</th>
                       <th style={{textAlign:'left', fontWeight: '600'}}>Ngày tạo</th>
                       <th style={{textAlign:'center', fontWeight: '600'}}>Thao tác</th>
                     </tr>
@@ -534,6 +691,13 @@ const StudentManagement = () => {
                           </Badge>
                         </td>
                         <td style={{textAlign:'left', fontWeight: '500'}}>{student.tenSinhVien}</td>
+                        <td style={{textAlign:'left'}}>
+                          {student.maPhongBan ? (
+                            <Badge bg="secondary">{student.maPhongBan}</Badge>
+                          ) : (
+                            <span className="text-muted">-</span>
+                          )}
+                        </td>
                         <td style={{textAlign:'left'}}>{new Date(student.createdAt).toLocaleDateString('vi-VN')}</td>
                         <td style={{textAlign:'center'}}>
                           <div className="d-flex gap-2 justify-content-center">
@@ -567,7 +731,7 @@ const StudentManagement = () => {
                 <div className="text-center py-5">
                   <FaUsers size={64} className="text-muted mb-3" />
                   <Alert variant="info" className="d-inline-block">
-                    Không có sinh viên nào được tìm thấy.
+                    Không có nhân viên nào được tìm thấy.
                   </Alert>
                 </div>
               )}
@@ -602,20 +766,20 @@ const StudentManagement = () => {
         </Col>
       </Row>
 
-      {/* Modal thêm/sửa sinh viên */}
+      {/* Modal thêm/sửa nhân viên */}
       <Modal show={showModal} onHide={handleCloseModal} size="lg">
-        <Modal.Header closeButton className="bg-primary text-white">
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
           <Modal.Title className="d-flex align-items-center">
             <FaUsers className="me-2" />
-            {editingStudent ? 'Sửa sinh viên' : 'Thêm sinh viên mới'}
+            {editingStudent ? 'Sửa nhân viên' : 'Thêm nhân viên mới'}
           </Modal.Title>
         </Modal.Header>
         <Form onSubmit={handleSubmit}>
           <Modal.Body>
             <Form.Group className="mb-3">
               <Form.Label className="fw-semibold d-flex align-items-center">
-                <FaIdCard className="me-2 text-primary" />
-                Mã sinh viên
+                <FaIdCard className="me-2" style={{ color: '#212529' }} />
+                Mã nhân viên
               </Form.Label>
               <Form.Control
                 type="text"
@@ -624,14 +788,14 @@ const StudentManagement = () => {
                 onChange={handleInputChange}
                 required
                 disabled={editingStudent ? true : false}
-                placeholder="Nhập mã sinh viên (VD: CT070201)"
+                placeholder="Nhập mã nhân viên (VD: CT070201)"
                 className="shadow-sm"
                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
             </Form.Group>
             <Form.Group className="mb-3">
               <Form.Label className="fw-semibold d-flex align-items-center">
-                <FaQrcode className="me-2 text-primary" />
+                <FaQrcode className="me-2" style={{ color: '#212529' }} />
                 RFID
               </Form.Label>
 
@@ -703,8 +867,8 @@ const StudentManagement = () => {
             left: '-40%',
             width: '40%',
             height: '100%',
-            background:
-              'linear-gradient(90deg, transparent, rgba(13,110,253,0.5), transparent)',
+              background:
+                'linear-gradient(90deg, transparent, rgba(33,37,41,0.5), transparent)',
             animation: 'sweep 1.2s linear infinite',
           }}
         />
@@ -726,7 +890,7 @@ const StudentManagement = () => {
       <div className="d-flex align-items-center justify-content-between">
         <div className="d-flex align-items-center">
           <i className="fas fa-exclamation-triangle me-2"></i>
-          <span><strong>RFID đã được đăng ký!</strong> Thẻ này đã được sử dụng bởi sinh viên khác.</span>
+          <span><strong>RFID đã được đăng ký!</strong> Thẻ này đã được sử dụng bởi nhân viên khác.</span>
         </div>
         <Button
           variant="outline-warning"
@@ -753,8 +917,8 @@ const StudentManagement = () => {
 
 <Form.Group className="mb-3">
               <Form.Label className="fw-semibold d-flex align-items-center">
-                <FaUsers className="me-2 text-primary" />
-                Tên sinh viên
+                <FaUsers className="me-2" style={{ color: '#212529' }} />
+                Tên nhân viên
               </Form.Label>
               <Form.Control
                 type="text"
@@ -762,10 +926,50 @@ const StudentManagement = () => {
                 value={formData.tenSinhVien}
                 onChange={handleInputChange}
                 required
-                placeholder="Nhập họ và tên sinh viên"
+                placeholder="Nhập họ và tên nhân viên"
                 className="shadow-sm"
                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold">Phòng ban</Form.Label>
+              <InputGroup>
+                <Form.Control
+                  type="text"
+                  readOnly
+                  value={
+                    formData.maPhongBan
+                      ? `${formData.maPhongBan} - ${phongBans.find(pb => pb.maPhongBan === formData.maPhongBan)?.tenPhongBan || ''}`
+                      : ''
+                  }
+                  placeholder="Chưa chọn phòng ban"
+                  className="shadow-sm"
+                  style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                />
+                <Button
+                  variant="primary"
+                  type="button"
+                  size="sm"
+                  position="relative"
+                  style={{top:"-10px"}}
+                  onClick={() => setShowPhongBanModal(true)}
+                  title="Chọn phòng ban"
+                >
+                  <FaList />
+                </Button>
+                <Button
+                  variant="success"
+                  type="button"
+                  size="sm"
+                  position="relative"
+                  style={{top:"-10px"}}
+                  onClick={openCreatePhongBanModal}
+                  title="Quản lý phòng ban"
+                >
+                  <FaPlus />
+                </Button>
+              </InputGroup>
             </Form.Group>
           </Modal.Body>
           <Modal.Footer>
@@ -773,7 +977,8 @@ const StudentManagement = () => {
               Hủy
             </Button>
             <Button 
-              variant="primary" 
+              variant="primary"
+              style={modalPrimaryStyle}
               type="submit" 
               disabled={
                 loading || 
@@ -788,7 +993,7 @@ const StudentManagement = () => {
 
       {/* Modal import Excel */}
       <Modal show={showImportModal} onHide={handleCloseImportModal} size="lg">
-        <Modal.Header closeButton className="bg-success text-white">
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
           <Modal.Title className="d-flex align-items-center">
             <FaUpload className="me-2" />
             Import cập nhật RFID từ Excel
@@ -802,7 +1007,7 @@ const StudentManagement = () => {
           
           <Form.Group className="mb-3">
             <Form.Label className="fw-semibold d-flex align-items-center">
-              <FaUpload className="me-2 text-primary" />
+              <FaUpload className="me-2" style={{ color: '#212529' }} />
               Chọn file Excel
             </Form.Label>
             <div
@@ -810,7 +1015,7 @@ const StudentManagement = () => {
               onDragOver={handleImportFileDragOver}
               onDragLeave={handleImportFileDragLeave}
               style={{
-                border: `2px dashed ${isDraggingImport ? '#0d6efd' : '#dee2e6'}`,
+                border: `2px dashed ${isDraggingImport ? '#212529' : '#dee2e6'}`,
                 borderRadius: '0.5rem',
                 padding: '2rem',
                 textAlign: 'center',
@@ -840,7 +1045,7 @@ const StudentManagement = () => {
                 </div>
               ) : (
                 <div>
-                  <FaUpload className="text-primary mb-2" size={32} />
+                  <FaUpload className="mb-2" size={32} style={{ color: '#212529' }} />
                   <p className="mb-1 fw-semibold">Kéo thả file Excel vào đây hoặc click để chọn</p>
                   <p className="text-muted small">Hỗ trợ file .xlsx, .xls</p>
                 </div>
@@ -885,13 +1090,194 @@ const StudentManagement = () => {
             Đóng
           </Button>
           <Button 
-            variant="primary" 
+            variant="primary"
+            style={modalPrimaryStyle}
             onClick={handleImport} 
             disabled={!importFile || importing}
           >
             {importing ? 'Đang xử lý...' : 'Import'}
           </Button>
         </Modal.Footer>
+      </Modal>
+
+      <Modal
+        show={showPhongBanModal}
+        onHide={() => setShowPhongBanModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>Chọn phòng ban</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Group className="mb-3">
+            <Form.Label>Tìm kiếm theo mã hoặc tên phòng ban</Form.Label>
+            <Form.Control
+              type="text"
+              placeholder="Nhập từ khóa..."
+              value={phongBanSearch}
+              onChange={(e) => setPhongBanSearch(e.target.value)}
+            />
+          </Form.Group>
+          <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+            <Table hover responsive size="sm" className="align-middle">
+              <thead>
+                <tr>
+                  <th style={{ width: '6%' }} />
+                  <th>Mã phòng ban</th>
+                  <th>Tên phòng ban</th>
+                  <th>Mô tả</th>
+                </tr>
+              </thead>
+              <tbody>
+                {phongBans
+                  .filter((pb) => {
+                    if (!phongBanSearch.trim()) return true;
+                    const keyword = phongBanSearch.toLowerCase();
+                    return (
+                      (pb.maPhongBan || '').toLowerCase().includes(keyword) ||
+                      (pb.tenPhongBan || '').toLowerCase().includes(keyword)
+                    );
+                  })
+                  .map((pb) => (
+                    <tr
+                      key={pb.maPhongBan}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, maPhongBan: pb.maPhongBan }));
+                        setShowPhongBanModal(false);
+                      }}
+                    >
+                      <td>
+                        <Form.Check
+                          type="radio"
+                          name="phongBanRadio"
+                          checked={formData.maPhongBan === pb.maPhongBan}
+                          readOnly
+                        />
+                      </td>
+                      <td>
+                        <Badge bg="secondary">{pb.maPhongBan}</Badge>
+                      </td>
+                      <td>{pb.tenPhongBan}</td>
+                      <td>{pb.moTa || <span className="text-muted">-</span>}</td>
+                    </tr>
+                  ))}
+                {phongBans.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-center text-muted py-3">
+                      Chưa có phòng ban nào
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button
+            variant="outline-secondary"
+            onClick={() => {
+              setFormData((prev) => ({ ...prev, maPhongBan: '' }));
+              setShowPhongBanModal(false);
+            }}
+          >
+            Xóa lựa chọn
+          </Button>
+          <Button variant="secondary" onClick={() => setShowPhongBanModal(false)}>
+            Đóng
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal
+        show={showPhongBanManageModal}
+        onHide={() => {
+          setShowPhongBanManageModal(false);
+          resetPhongBanForm();
+        }}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>{editingPhongBan ? 'Sửa phòng ban' : 'Thêm phòng ban'}</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Row className="g-2">
+            <Col md={4}>
+              <Form.Control
+                placeholder="Mã phòng ban"
+                value={phongBanForm.maPhongBan}
+                disabled={!!editingPhongBan}
+                onChange={(e) => setPhongBanForm((prev) => ({ ...prev, maPhongBan: e.target.value }))}
+              />
+            </Col>
+            <Col md={4}>
+              <Form.Control
+                placeholder="Tên phòng ban"
+                value={phongBanForm.tenPhongBan}
+                onChange={(e) => setPhongBanForm((prev) => ({ ...prev, tenPhongBan: e.target.value }))}
+              />
+            </Col>
+            <Col md={4}>
+              <Form.Control
+                placeholder="Mô tả (tuỳ chọn)"
+                value={phongBanForm.moTa}
+                onChange={(e) => setPhongBanForm((prev) => ({ ...prev, moTa: e.target.value }))}
+              />
+            </Col>
+          </Row>
+          <div className="mt-3 d-flex gap-2 justify-content-end">
+            {editingPhongBan && (
+              <Button variant="outline-secondary" onClick={resetPhongBanForm} disabled={savingPhongBan}>
+                Tạo mới
+              </Button>
+            )}
+            <Button variant="success" onClick={handleSavePhongBan} disabled={savingPhongBan}>
+              {savingPhongBan ? 'Đang lưu...' : (editingPhongBan ? 'Cập nhật' : 'Thêm phòng ban')}
+            </Button>
+          </div>
+
+          <hr />
+          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+            <Table hover responsive size="sm" className="align-middle">
+              <thead>
+                <tr>
+                  <th>Mã phòng ban</th>
+                  <th>Tên phòng ban</th>
+                  <th>Mô tả</th>
+                  <th style={{ width: '120px' }}>Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {phongBans.map((pb) => (
+                  <tr key={pb.maPhongBan}>
+                    <td><Badge bg="secondary">{pb.maPhongBan}</Badge></td>
+                    <td>{pb.tenPhongBan}</td>
+                    <td>{pb.moTa || <span className="text-muted">-</span>}</td>
+                    <td>
+                      <div className="d-flex gap-1">
+                        <Button size="sm" variant="warning" onClick={() => handleEditPhongBan(pb)}>
+                          <FaEdit />
+                        </Button>
+                        <Button size="sm" variant="danger" onClick={() => handleDeletePhongBan(pb.maPhongBan)}>
+                          <FaTrash />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {phongBans.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-center text-muted py-3">
+                      Chưa có phòng ban nào
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </Table>
+          </div>
+        </Modal.Body>
       </Modal>
     </Container>
   );

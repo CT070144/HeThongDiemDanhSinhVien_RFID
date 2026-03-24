@@ -505,4 +505,4 @@ Dự án này được phát triển cho mục đích học tập và nghiên c�
 
 ---
 
-**🎯 Lưu ý**: Đây là phiên bản hoàn chỉnh của hệ thống điểm danh RFID với đầy đủ tính năng quản lý lớp học phần, authentication, import/export Excel, và thống kê real-time. Hệ thống đã được tối ưu hóa và sẵn sàng cho môi trường production.
+**🎯 Lưu ý**: Đây là phiên bản hoàn chỉnh của Hệ thống chấm công  với đầy đủ tính năng quản lý lớp học phần, authentication, import/export Excel, và thống kê real-time. Hệ thống đã được tối ưu hóa và sẵn sàng cho môi trường production.

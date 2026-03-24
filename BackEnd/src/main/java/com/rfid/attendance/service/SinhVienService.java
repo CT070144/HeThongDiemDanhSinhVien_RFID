@@ -68,6 +68,7 @@ public class SinhVienService {
         
         sinhVien.setRfid(sinhVienDetails.getRfid());
         sinhVien.setTenSinhVien(sinhVienDetails.getTenSinhVien());
+        sinhVien.setMaPhongBan(sinhVienDetails.getMaPhongBan());
         
         SinhVien saved = sinhVienRepository.save(sinhVien);
         if(!sinhVienDetails.getRfid().equals(oldRfid)){
@@ -84,7 +85,7 @@ public class SinhVienService {
         });
 
         // Sync to phieudiemdanh (cập nhật RFID mới)
-        phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien());
+        phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien(), saved.getMaPhongBan());
         
         return saved;
     }
@@ -117,7 +118,25 @@ public class SinhVienService {
         
         for (SinhVien sinhVienData : sinhVienList) {
             try {
-                Optional<SinhVien> existingSinhVien = sinhVienRepository.findByMaSinhVien(sinhVienData.getMaSinhVien());
+                String maSinhVien = sinhVienData.getMaSinhVien() != null ? sinhVienData.getMaSinhVien().trim() : "";
+                String tenSinhVien = sinhVienData.getTenSinhVien() != null ? sinhVienData.getTenSinhVien().trim() : "";
+                String rfid = sinhVienData.getRfid() != null ? sinhVienData.getRfid().trim() : "";
+                String maPhongBan = sinhVienData.getMaPhongBan() != null ? sinhVienData.getMaPhongBan().trim() : null;
+                if (maPhongBan != null && maPhongBan.isEmpty()) {
+                    maPhongBan = null;
+                }
+
+                if (maSinhVien.isEmpty()) {
+                    throw new RuntimeException("Mã sinh viên không được để trống");
+                }
+                if (tenSinhVien.isEmpty()) {
+                    throw new RuntimeException("Tên sinh viên không được để trống");
+                }
+                if (rfid.isEmpty()) {
+                    throw new RuntimeException("RFID không được để trống");
+                }
+
+                Optional<SinhVien> existingSinhVien = sinhVienRepository.findByMaSinhVien(maSinhVien);
                 
                 if (existingSinhVien.isPresent()) {
                     // Cập nhật sinh viên đã tồn tại
@@ -125,13 +144,14 @@ public class SinhVienService {
                     String oldRfid = sinhVien.getRfid();
                     
                     // Kiểm tra RFID có bị trùng không (nếu thay đổi)
-                    if (!sinhVien.getRfid().equals(sinhVienData.getRfid()) &&
-                        sinhVienRepository.existsByRfid(sinhVienData.getRfid())) {
-                        throw new RuntimeException("RFID đã tồn tại: " + sinhVienData.getRfid());
+                    if (!sinhVien.getRfid().equals(rfid) &&
+                        sinhVienRepository.existsByRfid(rfid)) {
+                        throw new RuntimeException("RFID đã tồn tại: " + rfid);
                     }
                     
-                    sinhVien.setRfid(sinhVienData.getRfid());
-                    sinhVien.setTenSinhVien(sinhVienData.getTenSinhVien());
+                    sinhVien.setRfid(rfid);
+                    sinhVien.setTenSinhVien(tenSinhVien);
+                    sinhVien.setMaPhongBan(maPhongBan);
                     
                     SinhVien saved = sinhVienRepository.save(sinhVien);
                     
@@ -155,23 +175,28 @@ public class SinhVienService {
                     });
                     
                     // Sync to phieudiemdanh
-                    phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien());
+                    phieuDiemDanhRepository.updateStudentInfoByRfid(oldRfid, saved.getRfid(), saved.getMaSinhVien(), saved.getTenSinhVien(), saved.getMaPhongBan());
                     
                 } else {
                     // Tạo sinh viên mới
-                    if (sinhVienRepository.existsByRfid(sinhVienData.getRfid())) {
-                        throw new RuntimeException("RFID đã tồn tại: " + sinhVienData.getRfid());
+                    if (sinhVienRepository.existsByRfid(rfid)) {
+                        throw new RuntimeException("RFID đã tồn tại: " + rfid);
                     }
-                    
-                    SinhVien newSinhVien = sinhVienRepository.save(sinhVienData);
+                    SinhVien newSinhVien = new SinhVien();
+                    newSinhVien.setMaSinhVien(maSinhVien);
+                    newSinhVien.setTenSinhVien(tenSinhVien);
+                    newSinhVien.setRfid(rfid);
+                    newSinhVien.setMaPhongBan(maPhongBan);
+                    newSinhVien = sinhVienRepository.save(newSinhVien);
                     
                     // Sync to docrfid - kiểm tra và cập nhật trạng thái đã xử lý
+                    SinhVien finalNewSinhVien = newSinhVien;
                     docRfidRepository.findByRfid(newSinhVien.getRfid()).ifPresent(doc -> {
-                        doc.setMaSinhVien(newSinhVien.getMaSinhVien());
-                        doc.setTenSinhVien(newSinhVien.getTenSinhVien());
+                        doc.setMaSinhVien(finalNewSinhVien.getMaSinhVien());
+                        doc.setTenSinhVien(finalNewSinhVien.getTenSinhVien());
                         doc.setProcessed(true);
                         docRfidRepository.save(doc);
-                        System.out.println("Đã cập nhật docrfid cho sinh viên mới: " + newSinhVien.getTenSinhVien() + " - RFID: " + newSinhVien.getRfid());
+                        System.out.println("Đã cập nhật docrfid cho sinh viên mới: " + finalNewSinhVien.getTenSinhVien() + " - RFID: " + finalNewSinhVien.getRfid());
                     });
                 }
                 
@@ -179,7 +204,7 @@ public class SinhVienService {
                 
             } catch (Exception e) {
                 failureCount++;
-                errors.add("Sinh viên " + sinhVienData.getMaSinhVien() + ": " + e.getMessage());
+                errors.add("Sinh viên " + (sinhVienData != null ? sinhVienData.getMaSinhVien() : "unknown") + ": " + e.getMessage());
             }
         }
         

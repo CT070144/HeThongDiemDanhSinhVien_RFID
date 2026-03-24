@@ -1,7 +1,9 @@
 package com.rfid.attendance.service;
 
 import com.rfid.attendance.entity.PhieuDiemDanh;
+import com.rfid.attendance.entity.CaLam;
 import com.rfid.attendance.repository.PhieuDiemDanhRepository;
+import com.rfid.attendance.repository.CaLamRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -10,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @Transactional
@@ -17,6 +20,9 @@ public class ScheduledAttendanceService {
     
     @Autowired
     private PhieuDiemDanhRepository phieuDiemDanhRepository;
+
+    @Autowired
+    private CaLamRepository caLamRepository;
     
     /**
      * Tự động cập nhật trạng thái cho sinh viên chưa điểm danh ra
@@ -61,30 +67,41 @@ public class ScheduledAttendanceService {
     public void updateAttendanceStatusAfterSession() {
         LocalDate today = LocalDate.now();
         LocalTime currentTime = LocalTime.now();
-        Integer currentSession = getCurrentSessionFromTime(currentTime);
-        
-        if (currentSession != null) {
-            List<PhieuDiemDanh> activeAttendance = phieuDiemDanhRepository
-                    .findByNgayAndCaAndTrangThaiAndGioRaIsNull(today, currentSession, PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
-            
-            int updatedCount = 0;
-            
-            for (PhieuDiemDanh attendance : activeAttendance) {
+
+        // Thay vì dựa vào "cron đúng thời điểm", luôn kiểm tra tất cả ca đang diễn ra hôm nay.
+        // Như vậy nếu admin cấu hình giờ ca thay đổi thì vẫn hoạt động đúng.
+        List<PhieuDiemDanh> activeAttendance = phieuDiemDanhRepository
+                .findByNgayAndTrangThaiAndGioRaIsNull(today, PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
+
+        int updatedCount = 0;
+        for (PhieuDiemDanh attendance : activeAttendance) {
+            Integer ca = attendance.getCa();
+            LocalTime sessionEndTime = getSessionEndTime(ca);
+
+            if (currentTime.isAfter(sessionEndTime.plusMinutes(5))) {
                 attendance.setTrangThai(PhieuDiemDanh.TrangThaiHoc.KHONG_DIEM_DANH_RA);
                 phieuDiemDanhRepository.save(attendance);
                 updatedCount++;
-                
-                System.out.println("Cập nhật trạng thái 'Không điểm danh ra' cho sinh viên: " + 
-                                 attendance.getTenSinhVien() + " - Ca " + currentSession);
+
+                System.out.println("Cập nhật trạng thái 'Không điểm danh ra' cho sinh viên: " +
+                        attendance.getTenSinhVien() + " - Ca " + ca);
             }
-            
-            if (updatedCount > 0) {
-                System.out.println("Đã cập nhật trạng thái cho " + updatedCount + " sinh viên sau ca " + currentSession);
-            }
+        }
+
+        if (updatedCount > 0) {
+            System.out.println("Đã cập nhật trạng thái cho " + updatedCount + " sinh viên (sau ca kết thúc gần nhất)");
         }
     }
     
     private LocalTime getSessionEndTime(Integer ca) {
+        if (ca != null) {
+            Optional<CaLam> shiftOpt = caLamRepository.findByMaCa(ca);
+            if (shiftOpt.isPresent() && shiftOpt.get().getGioKetThuc() != null) {
+                return shiftOpt.get().getGioKetThuc();
+            }
+        }
+
+        // Fallback giá trị cũ để đảm bảo hệ thống chạy được khi DB chưa có cấu hình.
         switch (ca) {
             case 1: return LocalTime.of(9, 25);  // Ca 1: 7h - 9h25
             case 2: return LocalTime.of(12, 0);  // Ca 2: 9h35 - 12h

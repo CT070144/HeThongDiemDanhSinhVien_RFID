@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Modal, Form, Tabs, Tab, Spinner, Pagination } from 'react-bootstrap';
-import { attendanceAPI, studentAPI, deviceAPI, roomAPI } from '../services/api';
+import { attendanceAPI, studentAPI, deviceAPI, roomAPI, caLamAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
-import { FaQrcode, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch, FaEye, FaEyeSlash, FaKey, FaInfo } from 'react-icons/fa';
+import { FaQrcode,FaClock, FaCog, FaPlay, FaStop, FaCopy, FaTrash, FaFilter, FaDesktop, FaDoorOpen, FaCheckCircle, FaExclamationTriangle, FaBuilding, FaPlus, FaEdit, FaSearch, FaEye, FaEyeSlash, FaKey, FaInfo } from 'react-icons/fa';
 
 const SettingsPage = () => {
   const { notify } = useNotification();
@@ -38,10 +38,23 @@ const SettingsPage = () => {
   const [visibleApiKeys, setVisibleApiKeys] = useState(new Set());
   const [showNewApiKeyAlert, setShowNewApiKeyAlert] = useState(null);
 
+  // Ca làm (shift) management
+  const [caLams, setCaLams] = useState([]);
+  const [caLoading, setCaLoading] = useState(false);
+  const [editingCa, setEditingCa] = useState(null);
+  const [caForm, setCaForm] = useState({
+    maCa: '',
+    tenCa: '',
+    gioBatDau: '',
+    gioKetThuc: '',
+    choPhepTrePhut: '',
+  });
+
   useEffect(() => {
     loadUnprocessedRfids();
     loadDevices();
     loadRooms();
+    loadCaLams();
   }, []);
 
   useEffect(() => {
@@ -109,7 +122,7 @@ const SettingsPage = () => {
   const handleCreateDevice = async (e) => {
     e.preventDefault();
     if (!newDevice.maThietBi || !newDevice.phongHoc) {
-      notify.error('Vui lòng nhập đủ Mã thiết bị và Phòng học');
+      notify.error('Vui lòng nhập đủ Mã thiết bị và vị trí');
       return;
     }
     try {
@@ -231,10 +244,104 @@ const SettingsPage = () => {
     });
   };
 
+  const resetCaForm = () => {
+    setEditingCa(null);
+    setCaForm({
+      maCa: '',
+      tenCa: '',
+      gioBatDau: '',
+      gioKetThuc: '',
+      choPhepTrePhut: '',
+    });
+  };
+
+  const loadCaLams = async () => {
+    try {
+      setCaLoading(true);
+      const res = await caLamAPI.getAll();
+      setCaLams(res.data || []);
+    } catch (e) {
+      // silent
+    } finally {
+      setCaLoading(false);
+    }
+  };
+
+  const handleEditCaLam = (ca) => {
+    if (!ca) return;
+    setEditingCa(ca.maCa);
+    setCaForm({
+      maCa: ca.maCa ?? '',
+      tenCa: ca.tenCa ?? '',
+      gioBatDau: typeof ca.gioBatDau === 'string' ? ca.gioBatDau.substring(0, 5) : ca.gioBatDau,
+      gioKetThuc: typeof ca.gioKetThuc === 'string' ? ca.gioKetThuc.substring(0, 5) : ca.gioKetThuc,
+      choPhepTrePhut: ca.choPhepTrePhut ?? '',
+    });
+  };
+
+  const handleDeleteCaLam = async (maCa) => {
+    if (!window.confirm('Bạn có chắc muốn xóa ca làm này?')) return;
+    try {
+      await caLamAPI.delete(maCa);
+      notify.success('Đã xóa ca làm');
+      if (editingCa === maCa) resetCaForm();
+      await loadCaLams();
+    } catch (e) {
+      notify.error('Không thể xóa ca làm');
+    }
+  };
+
+  const handleSubmitCaLam = async (e) => {
+    e.preventDefault();
+
+    const maCaNum = Number(caForm.maCa);
+    const choPhepTrePhutNum = Number(caForm.choPhepTrePhut);
+
+    if (!maCaNum || Number.isNaN(maCaNum)) {
+      notify.error('Vui lòng nhập `mã ca` hợp lệ');
+      return;
+    }
+    if (!caForm.tenCa || !caForm.tenCa.trim()) {
+      notify.error('Vui lòng nhập `tên ca`');
+      return;
+    }
+    if (!caForm.gioBatDau || !caForm.gioKetThuc) {
+      notify.error('Vui lòng nhập `giờ bắt đầu` và `giờ kết thúc`');
+      return;
+    }
+    if (Number.isNaN(choPhepTrePhutNum) || choPhepTrePhutNum < 0) {
+      notify.error('Vui lòng nhập `phút được phép trễ` hợp lệ');
+      return;
+    }
+
+    const payload = {
+      maCa: maCaNum,
+      tenCa: caForm.tenCa.trim(),
+      gioBatDau: caForm.gioBatDau,
+      gioKetThuc: caForm.gioKetThuc,
+      choPhepTrePhut: choPhepTrePhutNum,
+    };
+
+    try {
+      if (editingCa !== null) {
+        await caLamAPI.update(editingCa, payload);
+        notify.success('Cập nhật ca làm thành công');
+      } else {
+        await caLamAPI.create(payload);
+        notify.success('Tạo ca làm thành công');
+      }
+      resetCaForm();
+      await loadCaLams();
+    } catch (e) {
+      const msg = e.response?.data?.message || 'Lưu ca làm thất bại';
+      notify.error(msg);
+    }
+  };
+
   const handleSaveRoom = async (e) => {
     e.preventDefault();
     if (!roomForm.maPhong) {
-      notify.error('Vui lòng nhập Mã phòng');
+      notify.error('Vui lòng nhập Mã vị trí');
       return;
     }
     try {
@@ -245,15 +352,15 @@ const SettingsPage = () => {
       };
       if (editingRoom) {
         await roomAPI.update(editingRoom, payload);
-        notify.success('Cập nhật phòng học thành công');
+        notify.success('Cập nhật vị trí thành công');
       } else {
         await roomAPI.create(payload);
-        notify.success('Tạo phòng học thành công');
+        notify.success('Tạo vị trí thành công');
       }
       resetRoomForm();
       loadRooms(roomKeyword);
     } catch (e) {
-      const msg = e.response?.data?.message || 'Lưu phòng học thất bại';
+      const msg = e.response?.data?.message || 'Lưu vị trí thất bại';
       notify.error(msg);
     }
   };
@@ -272,14 +379,14 @@ const SettingsPage = () => {
   };
 
   const handleDeleteRoom = async (maPhong) => {
-    if (!window.confirm('Xóa phòng học này?')) return;
+    if (!window.confirm('Xóa vị trí này?')) return;
     try {
       await roomAPI.delete(maPhong);
-      notify.success('Đã xóa phòng học');
+      notify.success('Đã xóa vị trí');
       if (editingRoom === maPhong) resetRoomForm();
       loadRooms(roomKeyword);
     } catch (e) {
-      const msg = e.response?.data?.message || 'Xóa phòng học thất bại';
+      const msg = e.response?.data?.message || 'Xóa vị trí thất bại';
       notify.error(msg);
     }
   };
@@ -344,7 +451,14 @@ const SettingsPage = () => {
   });
 
   return (
-    <Container fluid className="py-4">
+    <Container
+      fluid
+      className="py-4 configuration-theme"
+      style={{
+        '--bs-primary': '#212529',
+        '--bs-primary-rgb': '33, 37, 41'
+      }}
+    >
       <Row>
         <Col>
           <Card className="shadow-sm mb-4" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
@@ -354,6 +468,29 @@ const SettingsPage = () => {
             </Card.Header>
           </Card>
           <style>{`
+            .configuration-theme .btn-primary {
+              background-color: #212529 !important;
+              border-color: #212529 !important;
+            }
+            .configuration-theme .btn-outline-primary {
+              color: #212529 !important;
+              border-color: #212529 !important;
+            }
+            .configuration-theme .btn-outline-primary:hover,
+            .configuration-theme .btn-outline-primary:focus,
+            .configuration-theme .btn-outline-primary:active {
+              background-color: #212529 !important;
+              border-color: #212529 !important;
+              color: #fff !important;
+            }
+            .configuration-theme .nav-tabs .nav-link {
+              color: #212529 !important;
+            }
+            .configuration-theme .nav-tabs .nav-link.active {
+              color: #fff !important;
+              background-color: #212529 !important;
+              border-color: #212529 #212529 #fff !important;
+            }
             @keyframes sweep {
               0% { left: -40%; }
               100% { left: 100%; }
@@ -363,7 +500,7 @@ const SettingsPage = () => {
               70% { transform: scale(1.35); opacity: 0.2; }
               100% { transform: scale(1); opacity: 0.9; }
             }
-            .scan-dot { width: 10px; height: 10px; border-radius: 50%; background:#0d6efd; display:inline-block; animation: pulse 1.2s infinite ease-in-out; }
+            .scan-dot { width: 10px; height: 10px; border-radius: 50%; background:#212529; display:inline-block; animation: pulse 1.2s infinite ease-in-out; }
             .scan-dot.d2 { animation-delay: .2s }
             .scan-dot.d3 { animation-delay: .4s }
           `}</style>
@@ -420,7 +557,7 @@ const SettingsPage = () => {
                         <div className="fw-semibold fs-5">Đang quét RFID...</div>
                       </div>
                       <div className="position-relative mt-3" style={{height:8, overflow:'hidden', borderRadius:4}}>
-                        <div style={{position:'absolute', top:0, left:'-40%', width:'40%', height:'100%', background:'linear-gradient(90deg, transparent, rgba(13,110,253,0.5), transparent)', animation:'sweep 1.2s linear infinite'}} />
+                        <div style={{position:'absolute', top:0, left:'-40%', width:'40%', height:'100%', background:'linear-gradient(90deg, transparent, rgba(33,37,41,0.5), transparent)', animation:'sweep 1.2s linear infinite'}} />
                         <div style={{width:'100%', height:'100%', background:'repeating-linear-gradient(90deg, #e9ecef 0, #e9ecef 10px, #f8f9fa 10px, #f8f9fa 20px)'}} />
                       </div>
                       <div className="mt-3 d-flex justify-content-center gap-2">
@@ -437,8 +574,9 @@ const SettingsPage = () => {
                         <tr>
                           <th style={{ fontWeight: '600' }}>ID</th>
                           <th style={{ fontWeight: '600' }}>RFID</th>
-                          <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
-                          <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                          <th style={{ fontWeight: '600' }}>Vị trí</th>
+                          <th style={{ fontWeight: '600' }}>Mã nhân viên</th>
+                          <th style={{ fontWeight: '600' }}>Tên nhân viên</th>
                           <th style={{ fontWeight: '600' }}>Thời gian đọc</th>
                           <th style={{ fontWeight: '600' }}>Trạng thái</th>
                           <th style={{ fontWeight: '600', textAlign: 'center' }}>Thao tác</th>
@@ -452,6 +590,9 @@ const SettingsPage = () => {
                               <code className="bg-light px-2 py-1 rounded" style={{ fontSize: '0.9rem' }}>
                                 {rfid.rfid}
                               </code>
+                            </td>
+                            <td style={{ fontWeight: '500' }}>
+                              {rfid.phongHoc || rfid.viTri || rfid.maThietBi || <span className="text-muted">-</span>}
                             </td>
                             <td>
                               {rfid.maSinhVien ? (
@@ -555,7 +696,7 @@ const SettingsPage = () => {
               <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
                 <Card.Header className="bg-primary text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
                   <FaDesktop className="me-2" />
-                  <h5 className="mb-0">Đăng ký thiết bị cho phòng học</h5>
+                  <h5 className="mb-0">Đăng ký thiết bị</h5>
                 </Card.Header>
                 <Card.Body className="p-4">
                   <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
@@ -581,14 +722,14 @@ const SettingsPage = () => {
                             <Form.Group className="mb-0">
                               <Form.Label className="fw-semibold d-flex align-items-center mb-2">
                                 <FaDoorOpen className="me-2 text-primary" />
-                                Phòng học
+                                Vị trí
                               </Form.Label>
                               <Form.Control 
                                 value={newDevice.phongHoc} 
                                 onChange={(e) => setNewDevice(v => ({ ...v, phongHoc: e.target.value }))}
                                 className="shadow-sm"
                                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="Nhập phòng học..."
+                                placeholder="Nhập vị trí..."
                               />
                             </Form.Group>
                           </Col>
@@ -608,7 +749,7 @@ const SettingsPage = () => {
                       <thead className="table-primary">
                         <tr>
                           <th style={{ fontWeight: '600' }}>Mã thiết bị</th>
-                          <th style={{ fontWeight: '600' }}>Phòng học</th>
+                          <th style={{ fontWeight: '600' }}>Vị trí</th>
                           <th style={{ fontWeight: '600' }}>Trạng thái</th>
                           <th style={{ fontWeight: '600', textAlign: 'center' }}>Thao tác</th>
                         </tr>
@@ -655,286 +796,171 @@ const SettingsPage = () => {
                 </Card.Body>
               </Card>
             </Tab>
-            <Tab eventKey="room" title={
+
+            <Tab eventKey="shift" title={
               <span className="d-flex align-items-center">
-                <FaBuilding className="me-2" />
-                Phòng học
+                <FaClock className="me-2" />
+                Cài đặt ca làm
               </span>
             }>
               <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
-                <Card.Header className="bg-primary text-white d-flex align-items-center justify-content-between" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
-                  <div className="d-flex align-items-center">
-                    <FaBuilding className="me-2" />
-                    <h5 className="mb-0">{editingRoom ? 'Cập nhật phòng học' : 'Thêm phòng học'}</h5>
-                  </div>
-                  <Button variant="light" size="sm" className="shadow-sm" onClick={resetRoomForm}>
-                    <FaPlus className="me-1" />
-                    Tạo mới
-                  </Button>
+                <Card.Header className="bg-primary text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <FaClock className="me-2" />
+                  <h5 className="mb-0">Đặt ca làm</h5>
                 </Card.Header>
                 <Card.Body className="p-4">
-                  <Card className="mb-4 shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
-                    <Card.Body className="p-3">
-                      <Form onSubmit={handleSaveRoom}>
-                        <Row className="g-3 align-items-end">
-                          <Col md={3}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaDoorOpen className="me-2 text-primary" />
-                                Mã phòng
-                              </Form.Label>
-                              <Form.Control
-                                value={roomForm.maPhong}
-                                onChange={(e) => setRoomForm(v => ({ ...v, maPhong: e.target.value }))}
-                                disabled={!!editingRoom}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="VD: A101"
-                              />
-                            </Form.Group>
-                          </Col>
-                          <Col md={3}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Tên phòng
-                              </Form.Label>
-                              <Form.Control
-                                value={roomForm.tenPhong}
-                                onChange={(e) => setRoomForm(v => ({ ...v, tenPhong: e.target.value }))}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="Phòng máy, Phòng lab..."
-                              />
-                            </Form.Group>
-                          </Col>
-                          <Col md={2}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Tòa nhà
-                              </Form.Label>
-                              <Form.Control
-                                value={roomForm.toaNha}
-                                onChange={(e) => setRoomForm(v => ({ ...v, toaNha: e.target.value }))}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="A, B, C..."
-                              />
-                            </Form.Group>
-                          </Col>
-                          <Col md={2}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Tầng
-                              </Form.Label>
+                  <Row className="g-4">
+                    <Col md={3}>
+                      <Card className="shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                        <Card.Body className="p-3">
+                          <Form onSubmit={handleSubmitCaLam}>
+                            <Form.Group className="mb-3">
+                              <Form.Label className="fw-semibold mb-2">Mã ca</Form.Label>
                               <Form.Control
                                 type="number"
-                                value={roomForm.tang}
-                                onChange={(e) => setRoomForm(v => ({ ...v, tang: e.target.value }))}
+                                value={caForm.maCa}
+                                disabled={editingCa !== null}
+                                onChange={(e) => setCaForm(v => ({ ...v, maCa: e.target.value }))}
                                 className="shadow-sm"
                                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="VD: 1"
+                                placeholder="1..5"
                               />
                             </Form.Group>
-                          </Col>
-                          <Col md={2}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Sức chứa
-                              </Form.Label>
-                              <Form.Control
-                                type="number"
-                                value={roomForm.sucChua}
-                                onChange={(e) => setRoomForm(v => ({ ...v, sucChua: e.target.value }))}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="VD: 40"
-                              />
-                            </Form.Group>
-                          </Col>
-                        </Row>
-                        <Row className="g-3 align-items-end mt-3">
-                          <Col md={3}>
-                            <Form.Group className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Loại phòng
-                              </Form.Label>
-                              <Form.Control
-                                value={roomForm.loaiPhong}
-                                onChange={(e) => setRoomForm(v => ({ ...v, loaiPhong: e.target.value }))}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                                placeholder="Lý thuyết, Lab, Thực hành..."
-                              />
-                            </Form.Group>
-                          </Col>
-                          <Col md={3}>
-                            <Form.Group style={{ position: 'relative', top: '-10px' }} className="mb-0">
-                              <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                                <FaBuilding className="me-2 text-primary" />
-                                Trạng thái
-                              </Form.Label>
-                              <Form.Select
-                                value={roomForm.trangThai}
-                                onChange={(e) => setRoomForm(v => ({ ...v, trangThai: e.target.value }))}
-                                className="shadow-sm"
-                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                              >
-                                <option value="active">active</option>
-                                <option value="inactive">inactive</option>
-                              </Form.Select>
-                            </Form.Group>
-                          </Col>
-                          <Col md={6} className="d-flex justify-content-end">
-                            <Button type="submit" variant="primary" className="shadow-sm" style={{ minWidth: 180 }}>
-                              <FaCheckCircle className="me-2" />
-                              {editingRoom ? 'Cập nhật phòng' : 'Lưu phòng học'}
-                            </Button>
-                          </Col>
-                        </Row>
-                      </Form>
-                    </Card.Body>
-                  </Card>
 
-                  <div className="d-flex justify-content-between align-items-center mb-3">
-                    <div className="d-flex align-items-center gap-2">
-                      <Form.Control
-                        placeholder="Tìm kiếm phòng (mã/tên/tòa nhà)..."
-                        value={roomKeyword}
-                        onChange={(e) => setRoomKeyword(e.target.value)}
-                        className="shadow-sm"
-                        style={{ maxWidth: 320, border: '1px solid #dee2e6', borderRadius: '0.375rem', position: 'relative', top: '8px' }}
-                      />
-                      <Button variant="outline-primary" className=" w-100 shadow-sm shadow-sm" onClick={() => { setRoomPage(0); loadRooms(roomKeyword); }}>
-                        <FaSearch className="me-1" />
-                        Tìm
-                      </Button>
-                      <Button variant="outline-secondary" className="w-100 shadow-sm" onClick={() => { setRoomKeyword(''); setRoomPage(0); loadRooms(''); }}>
-                        <FaFilter className="me-1" />
-                        Xóa lọc
-                      </Button>
-                    </div>
-                  </div>
+                            <Form.Group className="mb-3">
+                              <Form.Label className="fw-semibold mb-2">Tên ca</Form.Label>
+                              <Form.Control
+                                value={caForm.tenCa}
+                                onChange={(e) => setCaForm(v => ({ ...v, tenCa: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                                placeholder="Ví dụ: Ca 1"
+                              />
+                            </Form.Group>
 
-                  <div className="table-responsive">
-                    <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
-                      <thead className="table-primary">
-                        <tr>
-                          <th style={{ fontWeight: '600' }}>Mã phòng</th>
-                          <th style={{ fontWeight: '600' }}>Tên phòng</th>
-                          <th style={{ fontWeight: '600' }}>Tòa nhà</th>
-                          <th style={{ fontWeight: '600' }}>Tầng</th>
-                          <th style={{ fontWeight: '600' }}>Sức chứa</th>
-                          <th style={{ fontWeight: '600' }}>Loại</th>
-                          <th style={{ fontWeight: '600' }}>Trạng thái</th>
-                          <th style={{ fontWeight: '600' }}>Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rooms.map(r => (
-                          <tr key={r.maPhong} style={{ verticalAlign: 'middle' }}>
-                            <td>
-                              <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
-                                {r.maPhong}
-                              </Badge>
-                            </td>
-                            <td style={{ fontWeight: '500' }}>{r.tenPhong || <span className="text-muted">-</span>}</td>
-                            <td>{r.toaNha || <span className="text-muted">-</span>}</td>
-                            <td>{r.tang ?? <span className="text-muted">-</span>}</td>
-                            <td>{r.sucChua ?? <span className="text-muted">-</span>}</td>
-                            <td>{r.loaiPhong || <span className="text-muted">-</span>}</td>
-                            <td>
-                              <Badge bg={r.trangThai === 'active' ? 'success' : 'secondary'} style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
-                                {r.trangThai || 'active'}
-                              </Badge>
-                            </td>
-                            <td style={{ textAlign: 'center' }}>
-                              <div className="d-flex gap-2 justify-content-center">
+                            <Form.Group className="mb-3">
+                              <Form.Label className="fw-semibold mb-2">Giờ bắt đầu</Form.Label>
+                              <Form.Control
+                                type="time"
+                                value={caForm.gioBatDau}
+                                onChange={(e) => setCaForm(v => ({ ...v, gioBatDau: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                              />
+                            </Form.Group>
+
+                            <Form.Group className="mb-3">
+                              <Form.Label className="fw-semibold mb-2">Giờ kết thúc</Form.Label>
+                              <Form.Control
+                                type="time"
+                                value={caForm.gioKetThuc}
+                                onChange={(e) => setCaForm(v => ({ ...v, gioKetThuc: e.target.value }))}
+                                className="shadow-sm"
+                                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                              />
+                            </Form.Group>
+
+                            
+
+                            <div className="d-flex gap-2">
+                              <Button type="submit" variant="primary" className="w-100 shadow-sm">
+                                {editingCa !== null ? 'Cập nhật ca' : 'Tạo ca'}
+                              </Button>
+                              {editingCa !== null && (
                                 <Button
-                                  variant="outline-warning"
-                                  size="sm"
-                                  onClick={() => handleEditRoom(r)}
+                                  type="button"
+                                  variant="outline-secondary"
+                                  onClick={resetCaForm}
                                   className="shadow-sm"
                                 >
-                                  <FaEdit className="me-1" />
-                                  Sửa
+                                  Hủy
                                 </Button>
-                                <Button
-                                  variant="outline-danger"
-                                  size="sm"
-                                  onClick={() => handleDeleteRoom(r.maPhong)}
-                                  className="shadow-sm"
-                                >
-                                  <FaTrash className="me-1" />
-                                  Xóa
-                                </Button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
-                  </div>
+                              )}
+                            </div>
+                          </Form>
+                        </Card.Body>
+                      </Card>
+                    </Col>
 
-                  {rooms.length === 0 && (
-                    <div className="text-center py-5">
-                      <FaBuilding size={64} className="text-muted mb-3" />
-                      <Alert variant="info" className="d-inline-block">
-                        Chưa có phòng học nào.
-                      </Alert>
-                    </div>
-                  )}
+                    <Col md={9}>
+                      <Card className="shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
+                        <Card.Body className="p-3">
+                          <div className="d-flex justify-content-between align-items-center mb-3">
+                            <h6 className="mb-0 fw-semibold">Danh sách ca</h6>
+                            {caLoading && <Spinner animation="border" size="sm" variant="primary" />}
+                          </div>
 
-                  {/* Pagination for Rooms */}
-                  {roomTotalPages > 1 && (
-                    <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
-                      <div className="text-muted fw-semibold">
-                        Tổng: <span className="text-primary">{roomTotalElements}</span> phòng học
-                      </div>
-                      <Pagination className="mb-0">
-                        <Pagination.Prev 
-                          disabled={roomPage === 0}
-                          onClick={() => setRoomPage(Math.max(0, roomPage - 1))}
-                          className="shadow-sm"
-                        />
-                        {getPaginationItems(roomPage, roomTotalPages).map((item, index) => {
-                          if (item === 'ellipsis-start' || item === 'ellipsis-end') {
-                            return (
-                              <Pagination.Ellipsis key={`ellipsis-${index}`} disabled />
-                            );
-                          }
-                          return (
-                            <Pagination.Item
-                              key={item}
-                              active={item === roomPage}
-                              onClick={() => setRoomPage(item)}
-                              className="shadow-sm"
-                            >
-                              {item + 1}
-                            </Pagination.Item>
-                          );
-                        })}
-                        <Pagination.Next 
-                          disabled={roomPage >= roomTotalPages - 1}
-                          onClick={() => setRoomPage(Math.min(roomTotalPages - 1, roomPage + 1))}
-                          className="shadow-sm"
-                        />
-                      </Pagination>
-                    </div>
-                  )}
+                          {caLams.length === 0 && !caLoading ? (
+                            <Alert variant="info" className="mb-0">
+                              Chưa có ca làm nào. Hãy tạo mới ở form bên trái.
+                            </Alert>
+                          ) : (
+                            <div className="table-responsive">
+                              <Table responsive striped hover className="mb-0" style={{ fontSize: '0.95rem' }}>
+                                <thead className="table-light">
+                                  <tr>
+                                    <th>Mã ca</th>
+                                    <th>Tên ca</th>
+                                    <th>Giờ bắt đầu</th>
+                                    <th>Giờ kết thúc</th>
+                                   
+                                    <th style={{ textAlign: 'center' }}>Thao tác</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {caLams.map((ca) => (
+                                    <tr key={ca.maCa} style={{ verticalAlign: 'middle' }}>
+                                      <td>
+                                        <Badge bg="primary" style={{ fontSize: '0.9rem', padding: '0.5rem 0.75rem' }}>
+                                          {ca.maCa}
+                                        </Badge>
+                                      </td>
+                                      <td style={{ fontWeight: '500' }}>{ca.tenCa || '-'}</td>
+                                      <td>{typeof ca.gioBatDau === 'string' ? ca.gioBatDau.substring(0, 5) : (ca.gioBatDau ?? '-')}</td>
+                                      <td>{typeof ca.gioKetThuc === 'string' ? ca.gioKetThuc.substring(0, 5) : (ca.gioKetThuc ?? '-')}</td>
+                                     
+                                      <td style={{ textAlign: 'center' }}>
+                                        <div className="d-flex gap-2 justify-content-center">
+                                          <Button
+                                            variant="outline-primary"
+                                            size="sm"
+                                            onClick={() => handleEditCaLam(ca)}
+                                            className="shadow-sm"
+                                          >
+                                            <FaEdit className="me-1" />
+                                            Sửa
+                                          </Button>
+                                          <Button
+                                            variant="outline-danger"
+                                            size="sm"
+                                            onClick={() => handleDeleteCaLam(ca.maCa)}
+                                            className="shadow-sm"
+                                          >
+                                            <FaTrash className="me-1" />
+                                            Xóa
+                                          </Button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </Table>
+                            </div>
+                          )}
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  </Row>
                 </Card.Body>
               </Card>
             </Tab>
+           
           </Tabs>
         </Col>
       </Row>
 
       <Modal show={showModal} onHide={() => setShowModal(false)} size="lg">
-        <Modal.Header closeButton className={scannedInfo.status === 'found' ? 'bg-success text-white' : 'bg-warning text-white'}>
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
           <Modal.Title className="d-flex align-items-center">
             <FaQrcode className="me-2" />
             Kết quả quét RFID
@@ -943,7 +969,7 @@ const SettingsPage = () => {
         <Modal.Body className="p-4">
           <div className="mb-3">
             <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-              <FaQrcode className="me-2 text-primary" />
+              <FaQrcode className="me-2" style={{ color: '#212529' }} />
               RFID:
             </Form.Label>
             <code className="bg-light px-3 py-2 rounded d-block" style={{ fontSize: '1.1rem' }}>
@@ -959,13 +985,13 @@ const SettingsPage = () => {
                 </div>
                 <div className="mt-3">
                   <p className="mb-2">
-                    <strong>Tên sinh viên:</strong> 
+                    <strong>Tên nhân viên:</strong> 
                     <Badge bg="secondary" className="ms-2" style={{ fontSize: '0.95rem', padding: '0.4rem 0.6rem' }}>
                       {scannedInfo.name}
                     </Badge>
                   </p>
                   <p className="mb-0">
-                    <strong>Mã sinh viên:</strong> 
+                    <strong>Mã nhân viên:</strong> 
                     <Badge bg="primary" className="ms-2" style={{ fontSize: '0.95rem', padding: '0.4rem 0.6rem' }}>
                       {scannedInfo.maSinhVien}
                     </Badge>
@@ -1036,7 +1062,7 @@ const SettingsPage = () => {
 
       {/* Device Details Modal */}
       <Modal show={showDeviceDetailsModal} onHide={() => setShowDeviceDetailsModal(false)} size="lg">
-        <Modal.Header closeButton className="bg-primary text-white" style={{ border: 'none' }}>
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529', border: 'none' }}>
           <Modal.Title className="d-flex align-items-center">
             <FaDesktop className="me-2" />
             Chi tiết thiết bị: {selectedDevice?.maThietBi}
@@ -1056,7 +1082,7 @@ const SettingsPage = () => {
                   </div>
                   <div className="col-md-6">
                     <p className="mb-2">
-                      <strong>Phòng học:</strong>
+                      <strong>Vị trí:</strong>
                       <span className="ms-2">{selectedDevice.phongHoc}</span>
                     </p>
                   </div>

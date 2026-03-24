@@ -7,9 +7,10 @@ const Footer = () => {
 
   return (
     <footer 
-      className="bg-dark text-white mt-auto" 
+      className="text-white mt-auto" 
       style={{ 
-        borderTop: '3px solid #0d6efd',
+        backgroundColor: '#212529',
+        borderTop: '3px solid #212529',
         padding: '2rem 0',
         marginTop: '3rem'
       }}
@@ -17,37 +18,37 @@ const Footer = () => {
       <Container>
         <Row className="g-4">
           <Col md={4}>
-            <h5 className="mb-3" style={{ color: '#0d6efd', fontWeight: '600' }}>
-              Hệ thống điểm danh RFID
+            <h5 className="mb-3" style={{ color: '#f8f9fa', fontWeight: '600' }}>
+              Hệ thống chấm công 
             </h5>
             <p className="text-white-50 mb-0" style={{ fontSize: '0.9rem', lineHeight: '1.6' }}>
-              Hệ thống quản lý điểm danh tự động sử dụng công nghệ RFID, 
-              giúp theo dõi và quản lý sinh viên một cách hiệu quả và chính xác.
+              Hệ thống quản lý chấm công tự động sử dụng công nghệ RFID, 
+              giúp theo dõi và quản lý nhân viên một cách hiệu quả và chính xác.
             </p>
           </Col>
           
           <Col md={4}>
-            <h5 className="mb-3" style={{ color: '#0d6efd', fontWeight: '600' }}>
+            <h5 className="mb-3" style={{ color: '#f8f9fa', fontWeight: '600' }}>
               Thông tin liên hệ
             </h5>
             <div className="d-flex flex-column gap-2">
               <div className="d-flex align-items-center text-white-50" style={{ fontSize: '0.9rem' }}>
-                <FaMapMarkerAlt className="me-2" style={{ color: '#0d6efd' }} />
+                <FaMapMarkerAlt className="me-2" style={{ color: '#adb5bd' }} />
                 <span>Học viện Kỹ thuật Mật mã, Hà Nội</span>
               </div>
               <div className="d-flex align-items-center text-white-50" style={{ fontSize: '0.9rem' }}>
-                <FaEnvelope className="me-2" style={{ color: '#0d6efd' }} />
+                <FaEnvelope className="me-2" style={{ color: '#adb5bd' }} />
                 <span>info@kma.edu.vn</span>
               </div>
               <div className="d-flex align-items-center text-white-50" style={{ fontSize: '0.9rem' }}>
-                <FaPhone className="me-2" style={{ color: '#0d6efd' }} />
+                <FaPhone className="me-2" style={{ color: '#adb5bd' }} />
                 <span>+84 24 3832 1234</span>
               </div>
             </div>
           </Col>
           
           <Col md={4}>
-            <h5 className="mb-3" style={{ color: '#0d6efd', fontWeight: '600' }}>
+            <h5 className="mb-3" style={{ color: '#f8f9fa', fontWeight: '600' }}>
               Hỗ trợ
             </h5>
             <div className="d-flex flex-column gap-2">

@@ -1,13 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal } from 'react-bootstrap';
-import * as XLSX from 'xlsx';
-import { exportAttendanceToExcel } from '../services/exportExcel';
-import { attendanceAPI } from '../services/api';
+import { attendanceAPI, caLamAPI, roomAPI, phongBanAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
-import api from '../services/api';
 import io  from "socket.io-client";
 import { formatTime } from '../services/format-time';
-import { FaFilter, FaTimes, FaCalendarAlt, FaClock, FaGraduationCap, FaIdCard, FaDoorOpen, FaHistory, FaFileExport, FaChartBar, FaCheckCircle, FaExclamationTriangle, FaClock as FaClockIcon, FaInfoCircle, FaSignOutAlt } from 'react-icons/fa';
+import { FaFilter, FaTimes, FaCalendarAlt, FaClock, FaIdCard, FaDoorOpen, FaHistory, FaFileExport, FaChartBar, FaCheckCircle, FaExclamationTriangle, FaClock as FaClockIcon, FaInfoCircle, FaSignOutAlt } from 'react-icons/fa';
 
 
 const AttendanceHistory = () => {
@@ -15,15 +12,10 @@ const AttendanceHistory = () => {
   const [attendance, setAttendance] = useState([]);
   const [filteredAttendance, setFilteredAttendance] = useState([]);
   const [allFilteredAttendance, setAllFilteredAttendance] = useState([]);
-  const [lopHocPhans, setLopHocPhans] = useState([]);
-  const [studentsInLop, setStudentsInLop] = useState([]);
   const socketRef = useRef(null);
-  const notifiedIdsRef = useRef(new Set()); // Track IDs that have been notified
+  const [totalElements, setTotalElements] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
   const [attendanceStats, setAttendanceStats] = useState({
-    totalStudents: 0,
-    attended: 0,
-    absent: 0,
-    late: 0,
     dangHoc: 0,
     daRaVe: 0,
     raVeSom: 0,
@@ -32,26 +24,56 @@ const AttendanceHistory = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(12);
   const [filters, setFilters] = useState({
-    ngay: '',
+    startDate: '',
+    endDate: '',
     ca: '',
     maSinhVien: '',
-    phongHoc: '',
-    lopHocPhan: ''
+    phongHoc: [],
+    tinhTrang: '',
+    trangThai: '',
+    maPhongBan: ''
   });
-  const [showLopHocPhanModal, setShowLopHocPhanModal] = useState(false);
-  const [lopHocPhanSearch, setLopHocPhanSearch] = useState('');
-  const [selectedLopHocPhanName, setSelectedLopHocPhanName] = useState('');
+  const [showPhongHocModal, setShowPhongHocModal] = useState(false);
+  const [showPhongBanModal, setShowPhongBanModal] = useState(false);
+  const [phongHocSearch, setPhongHocSearch] = useState('');
+  const [phongBanSearch, setPhongBanSearch] = useState('');
+  const [phongHocOptions, setPhongHocOptions] = useState([]);
+  const [phongBanOptions, setPhongBanOptions] = useState([]);
+  const [caLams, setCaLams] = useState([]);
 
   useEffect(() => {
     loadAttendance();
-    loadLopHocPhans();
-  }, []);
-  const loadLopHocPhans = async () => {
+    loadCaLams();
+    loadLookupOptions();
+  }, [page]);
+
+  const loadCaLams = async () => {
     try {
-      const response = await api.get('/lophocphan');
-      setLopHocPhans(response.data);
+      const response = await caLamAPI.getAll();
+      const data = response.data || [];
+      const sorted = [...data].sort((a, b) => (a.maCa || 0) - (b.maCa || 0));
+      setCaLams(sorted);
     } catch (error) {
-      console.error('Error loading lop hoc phan:', error);
+      console.error('Error loading ca lam:', error);
+      setCaLams([]);
+    }
+  };
+  const loadLookupOptions = async () => {
+    try {
+      const [roomsRes, pbRes] = await Promise.all([roomAPI.getAll(), phongBanAPI.getAll()]);
+      const roomOptions = (roomsRes?.data || [])
+        .map((r) => r.maPhong || r.tenPhong)
+        .filter(Boolean)
+        .sort();
+      const pbOptions = (pbRes?.data || [])
+        .map((p) => p.maPhongBan)
+        .filter(Boolean)
+        .sort();
+      setPhongHocOptions(roomOptions);
+      setPhongBanOptions(pbOptions);
+    } catch (error) {
+      setPhongHocOptions([]);
+      setPhongBanOptions([]);
     }
   };
   useEffect(() => {
@@ -81,34 +103,8 @@ const AttendanceHistory = () => {
         console.error("Socket connect_error:", err.message || err);
       });
 
-      socketRef.current.on("update-attendance", (result) => {
-        console.log("New message received:", result);
-        try {
-          result = typeof result === 'string' ? JSON.parse(result) : result;
-        } catch (e) {
-          console.error("Error parsing result:", e);
-          return;
-        }
-        
-        setAttendance((prev) => {
-          // Kiểm tra xem đây có phải là bản ghi mới không (chưa có trong danh sách)
-          const isNewRecord = !prev.some(r => r.id === result.id);
-          
-          // replace if same id exists; otherwise prepend
-          const index = prev.findIndex((r) => r.id === result.id);
-          let next;
-          if (index !== -1) {
-            next = [...prev];
-            next[index] = result;
-          } else {
-            next = [result, ...prev];
-          }
-          
-          // Không hiển thị thông báo ở đây vì đã có global AttendanceNotificationListener
-          // Chỉ cập nhật state để hiển thị trong danh sách
-          
-          return next.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-        });
+      socketRef.current.on("update-attendance", () => {
+        loadAttendance();
       });
     }
 
@@ -122,95 +118,8 @@ const AttendanceHistory = () => {
     };
   }, []);
 
-  const filterAttendance = useCallback(async () => {
-    let filtered = [];
-
-    // Nếu lọc theo lớp học phần, sử dụng API riêng
-    if (filters.lopHocPhan) {
-      try {
-        // Gọi API mới để lấy phiếu điểm danh theo lớp học phần
-        const response = await attendanceAPI.getByLopHocPhan(filters.lopHocPhan);
-        filtered = response.data || [];
-        
-        // Lấy danh sách sinh viên trong lớp để tính thống kê
-        const studentsResponse = await api.get(`/lophocphan/${filters.lopHocPhan}/sinhvien`);
-        const studentsInLop = studentsResponse.data || [];
-        setStudentsInLop(studentsInLop);
-        
-        // Tính thống kê điểm danh cho lớp
-        calculateAttendanceStats(studentsInLop, filtered);
-        
-        // Áp dụng các filter bổ sung (ngày, ca, mã sinh viên, phòng học)
-        if (filters.ngay) {
-          filtered = filtered.filter(item => item.ngay === filters.ngay);
-        }
-
-        if (filters.ca) {
-          filtered = filtered.filter(item => item.ca === parseInt(filters.ca));
-        }
-
-        if (filters.maSinhVien) {
-          filtered = filtered.filter(item =>
-            item.maSinhVien.toLowerCase().includes(filters.maSinhVien.toLowerCase())
-          );
-        }
-
-        if (filters.phongHoc) {
-          filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
-        }
-      } catch (error) {
-        console.error('Error filtering by lop hoc phan:', error);
-        notify.error('Lỗi khi lọc theo lớp học phần');
-        setStudentsInLop([]);
-        setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
-        setAllFilteredAttendance([]);
-        setFilteredAttendance([]);
-        return;
-      }
-    } else {
-      // Không lọc theo lớp học phần, sử dụng logic cũ
-      filtered = [...attendance];
-
-      if (filters.ngay) {
-        filtered = filtered.filter(item => item.ngay === filters.ngay);
-      }
-
-      if (filters.ca) {
-        filtered = filtered.filter(item => item.ca === parseInt(filters.ca));
-      }
-
-      if (filters.maSinhVien) {
-        filtered = filtered.filter(item =>
-          item.maSinhVien.toLowerCase().includes(filters.maSinhVien.toLowerCase())
-        );
-      }
-
-      if (filters.phongHoc) {
-        filtered = filtered.filter(item => (item.phongHoc || '').toLowerCase().includes(filters.phongHoc.toLowerCase()));
-      }
-
-      setStudentsInLop([]);
-      setAttendanceStats({ totalStudents: 0, attended: 0, absent: 0, late: 0, dangHoc: 0, daRaVe: 0, raVeSom: 0, khongDiemDanhRa: 0 });
-    }
-
-    // Đảm bảo dữ liệu đã lọc cũng được sắp xếp theo thời gian tạo mới nhất
-    const sortedFiltered = filtered.sort((a, b) => 
-      new Date(b.createdAt) - new Date(a.createdAt)
-    );
-    
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-    setAllFilteredAttendance(sortedFiltered);
-    setFilteredAttendance(sortedFiltered.slice(start, end));
-  }, [attendance, filters, page, pageSize, notify]);
-
-  const calculateAttendanceStats = (studentsInLop, attendanceRecords) => {
-    const totalStudents = studentsInLop.length;
-    const attendedStudents = new Set(attendanceRecords.map(r => r.maSinhVien));
-    const lateStudents = new Set(attendanceRecords.filter(r => 
-      r.tinhTrangDiemDanh === 'muon' || r.tinhTrangDiemDanh === 'MUON'
-    ).map(r => r.maSinhVien));
-    const dangHocStudents = new Set(attendanceRecords.filter(r => 
+  const calculateAttendanceStats = (attendanceRecords) => {
+    const dangHocStudents = new Set(attendanceRecords.filter(r =>
       r.trangThai === 'DANG_HOC' || r.trangThai === 'dang_hoc'
     ).map(r => r.maSinhVien));
     const daRaVeStudents = new Set(attendanceRecords.filter(r => 
@@ -223,19 +132,12 @@ const AttendanceHistory = () => {
       r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra'
     ).map(r => r.maSinhVien));
     
-    const attended = attendedStudents.size;
-    const late = lateStudents.size;
-    const absent = totalStudents - attended;
     const dangHoc = dangHocStudents.size;
     const daRaVe = daRaVeStudents.size;
     const raVeSom = raVeSomStudents.size;
     const khongDiemDanhRa = khongDiemDanhRaStudents.size;
 
     setAttendanceStats({
-      totalStudents,
-      attended,
-      absent,
-      late,
       dangHoc,
       daRaVe,
       raVeSom,
@@ -243,35 +145,65 @@ const AttendanceHistory = () => {
     });
   };
 
-  useEffect(() => {
-    filterAttendance();
-  }, [filterAttendance]);
-
-  const loadAttendance = async () => {
+  const loadAttendance = useCallback(async () => {
     try {
-      const response = await attendanceAPI.getAll();
-      // Sắp xếp theo thời gian tạo mới nhất lên đầu
-      const sortedData = response.data.sort((a, b) => 
-        new Date(b.createdAt) - new Date(a.createdAt)
-      );
-      console.log(sortedData);
-      setAttendance(sortedData);
-      // Đánh dấu tất cả các bản ghi đã load là đã được thông báo để tránh hiển thị toast cho dữ liệu cũ
-      sortedData.forEach(record => {
-        if (record.id) {
-          notifiedIdsRef.current.add(record.id);
-        }
+      const response = await attendanceAPI.getPaged({
+        page: page - 1,
+        size: pageSize,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        ca: filters.ca,
+        maSinhVien: filters.maSinhVien,
+        phongHoc: (filters.phongHoc || []).join(','),
+        tinhTrang: filters.tinhTrang,
+        trangThai: filters.trangThai,
+        maPhongBan: filters.maPhongBan
       });
+      const content = response?.data?.content || [];
+      setAttendance(content);
+      setFilteredAttendance(content);
+      setTotalElements(response?.data?.totalElements || 0);
+      setTotalPages(response?.data?.totalPages || 0);
     } catch (error) {
-      // tránh spam toast do polling liên tục
-      // toast.error('Lỗi khi tải lịch sử điểm danh');
+      notify.error('Lỗi khi tải lịch sử chấm công');
     }
+  }, [filters, notify, page, pageSize]);
 
-  };
+  useEffect(() => {
+    loadAttendance();
+  }, [loadAttendance]);
+
+  const loadAttendanceStatsByFilters = useCallback(async () => {
+    try {
+      const response = await attendanceAPI.getPaged({
+        page: 0,
+        size: 100000,
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        ca: filters.ca,
+        maSinhVien: filters.maSinhVien,
+        phongHoc: (filters.phongHoc || []).join(','),
+        tinhTrang: filters.tinhTrang,
+        trangThai: filters.trangThai,
+        maPhongBan: filters.maPhongBan
+      });
+      const allFiltered = response?.data?.content || [];
+      setAllFilteredAttendance(allFiltered);
+      calculateAttendanceStats(allFiltered);
+    } catch (error) {
+      setAllFilteredAttendance([]);
+      calculateAttendanceStats([]);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    loadAttendanceStatsByFilters();
+  }, [loadAttendanceStatsByFilters]);
 
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
+    setPage(1);
     setFilters(prev => ({
       ...prev,
       [name]: value
@@ -280,13 +212,50 @@ const AttendanceHistory = () => {
 
   const clearFilters = () => {
     setFilters({
-      ngay: '',
+      startDate: '',
+      endDate: '',
       ca: '',
       maSinhVien: '',
-      phongHoc: '',
-      lopHocPhan: ''
+      phongHoc: [],
+      tinhTrang: '',
+      trangThai: '',
+      maPhongBan: ''
     });
-    setSelectedLopHocPhanName('');
+    setPage(1);
+  };
+  const hasActiveFilters = Boolean(
+    filters.startDate ||
+    filters.endDate ||
+    filters.ca ||
+    filters.maSinhVien ||
+    (filters.phongHoc && filters.phongHoc.length > 0) ||
+    filters.tinhTrang ||
+    filters.trangThai ||
+    filters.maPhongBan
+  );
+
+  const togglePhongHoc = (roomCode) => {
+    setPage(1);
+    setFilters((prev) => {
+      const current = prev.phongHoc || [];
+      return {
+        ...prev,
+        phongHoc: current.includes(roomCode)
+          ? current.filter((x) => x !== roomCode)
+          : [...current, roomCode]
+      };
+    });
+  };
+
+  const togglePhongBan = (maPhongBan) => {
+    setPage(1);
+    setFilters((prev) => {
+      const current = prev.maPhongBan ? prev.maPhongBan.split(',').map(x => x.trim()).filter(Boolean) : [];
+      const next = current.includes(maPhongBan)
+        ? current.filter((x) => x !== maPhongBan)
+        : [...current, maPhongBan];
+      return { ...prev, maPhongBan: next.join(',') };
+    });
   };
 
   const getStatusBadge = (trangThai) => {
@@ -300,35 +269,57 @@ const AttendanceHistory = () => {
 
   const getAttendanceStatusBadge = (trangThai) => {
     const statusMap = {
-      'DANG_HOC': { variant: 'primary', text: 'Đang học' },
+      'DANG_HOC': { variant: 'primary', text: 'Đang làm' },
       'DA_RA_VE': { variant: 'success', text: 'Đã ra về' },
       'RA_VE_SOM': { variant: 'warning', text: 'Ra về sớm' },
-      'KHONG_DIEM_DANH_RA': { variant: 'danger', text: 'Không điểm danh ra' }
+      'KHONG_DIEM_DANH_RA': { variant: 'danger', text: 'Không chấm công ra' }
     };
     const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
     return <Badge bg={status.variant}>{status.text}</Badge>;
   };
 
-  const exportExcel = () => {
-    exportAttendanceToExcel({
-      attendance,
-      allFilteredAttendance,
-      studentsInLop,
-      filters,
-      lopHocPhans,
-      attendanceStats
-    });
+  const exportExcel = async () => {
+    try {
+      if (!filters.startDate || !filters.endDate) {
+        notify.error('Khi xuất file bắt buộc phải chọn từ ngày và đến ngày');
+        return;
+      }
+      const response = await attendanceAPI.exportExcel({
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        ca: filters.ca,
+        maSinhVien: filters.maSinhVien,
+        phongHoc: (filters.phongHoc || []).join(','),
+        tinhTrang: filters.tinhTrang,
+        trangThai: filters.trangThai,
+        maPhongBan: filters.maPhongBan
+      });
+      const blob = new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = `BangChamCong_${filters.startDate}_${filters.endDate}.xlsx`;
+      link.href = url;
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      notify.error('Lỗi khi xuất file Excel');
+    }
   };
 
   const getCaName = (ca) => {
-    const caMap = {
-      1: 'Ca 1 (07:00-09:25)',
-      2: 'Ca 2 (09:35-12:00)',
-      3: 'Ca 3 (12:30-14:55)',
-      4: 'Ca 4 (15:05-17:30)',
-      5: 'Ca 5 (18:00-20:30)'
-    };
-    return caMap[ca] || `Ca ${ca}`;
+    const shift = caLams.find(item => Number(item.maCa) === Number(ca));
+    if (!shift) return `Ca ${ca}`;
+    const start = typeof shift.gioBatDau === 'string' ? shift.gioBatDau.substring(0, 5) : '';
+    const end = typeof shift.gioKetThuc === 'string' ? shift.gioKetThuc.substring(0, 5) : '';
+    if (start && end) {
+      return `${shift.tenCa || `Ca ${shift.maCa}`} (${start}-${end})`;
+    }
+    return shift.tenCa || `Ca ${shift.maCa}`;
   };
 
   // Format time strings like "15:41:03.7472476" to "15:41:03"
@@ -336,14 +327,21 @@ const AttendanceHistory = () => {
 
 
   return (
-    <Container fluid className="py-4">
+    <Container
+      fluid
+      className="py-4"
+      style={{
+        '--bs-primary': '#212529',
+        '--bs-primary-rgb': '33, 37, 41'
+      }}
+    >
       <Row>
         <Col>
           <Card className="shadow-sm" style={{ border: 'none' }}>
             <Card.Header className="bg-primary text-white d-flex justify-content-between align-items-center" style={{ border: 'none' }}>
               <h3 className="mb-0 d-flex align-items-center">
                 <FaHistory className="me-2" />
-                Lịch sử điểm danh
+                Lịch sử chấm công
               </h3>
               <Button variant="light" onClick={exportExcel} className="shadow-sm">
                 <FaFileExport className="me-2" />
@@ -363,12 +361,28 @@ const AttendanceHistory = () => {
                       <Form.Group className="mb-0">
                         <Form.Label className="fw-semibold d-flex align-items-center mb-2">
                           <FaCalendarAlt className="me-2 text-primary" />
-                          Ngày
+                          Từ ngày
                         </Form.Label>
                         <Form.Control
                           type="date"
-                          name="ngay"
-                          value={filters.ngay}
+                          name="startDate"
+                          value={filters.startDate}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        />
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
+                          <FaCalendarAlt className="me-2 text-primary" />
+                          Đến ngày
+                        </Form.Label>
+                        <Form.Control
+                          type="date"
+                          name="endDate"
+                          value={filters.endDate}
                           onChange={handleFilterChange}
                           className="shadow-sm"
                           style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
@@ -379,7 +393,7 @@ const AttendanceHistory = () => {
                       <Form.Group className="mb-0">
                         <Form.Label className="fw-semibold d-flex align-items-center mb-2">
                           <FaClock className="me-2 text-primary" />
-                          Ca học
+                          Ca làm
                         </Form.Label>
                         <Form.Select
                           name="ca"
@@ -389,50 +403,31 @@ const AttendanceHistory = () => {
                           style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
                         >
                           <option value="">Tất cả ca</option>
-                          <option value="1">Ca 1 (07:00-09:25)</option>
-                          <option value="2">Ca 2 (09:35-12:00)</option>
-                          <option value="3">Ca 3 (12:30-14:55)</option>
-                          <option value="4">Ca 4 (15:05-17:30)</option>
-                          <option value="5">Ca 5 (18:00-20:30)</option>
+                          {caLams.map((ca) => {
+                            const start = typeof ca.gioBatDau === 'string' ? ca.gioBatDau.substring(0, 5) : '';
+                            const end = typeof ca.gioKetThuc === 'string' ? ca.gioKetThuc.substring(0, 5) : '';
+                            return (
+                              <option key={ca.maCa} value={ca.maCa}>
+                                {ca.tenCa || `Ca ${ca.maCa}`}{start && end ? ` (${start}-${end})` : ''}
+                              </option>
+                            );
+                          })}
                         </Form.Select>
                       </Form.Group>
                     </Col>
-                    <Col xs={12} sm={6} md={4} lg={2}>
-                      <Form.Group className="mb-0">
-                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">
-                          <FaGraduationCap className="me-2 text-primary" />
-                          Lớp học phần
-                        </Form.Label>
-                        <Button
-                          variant="outline-primary"
-                          className="w-100 shadow-sm text-start d-flex justify-content-between align-items-center"
-                          style={{ borderRadius: '0.375rem' }}
-                          onClick={() => setShowLopHocPhanModal(true)}
-                        >
-                          <span style={{ 
-                            whiteSpace: 'nowrap', 
-                            overflow: 'hidden', 
-                            textOverflow: 'ellipsis',
-                            flex: 1,
-                            minWidth: 0
-                          }}>
-                            {selectedLopHocPhanName || 'Chọn lớp học phần'}
-                          </span>
-                        </Button>
-                      </Form.Group>
-                    </Col>
+                   
                     <Col xs={12} sm={6} md={4} lg={2}>
                       <Form.Group className="mb-0">
                         <Form.Label className="fw-semibold d-flex align-items-center mb-2">
                           <FaIdCard className="me-2 text-primary" />
-                          Mã sinh viên
+                          Mã  nhân viên
                         </Form.Label>
                         <Form.Control
                           type="text"
                           name="maSinhVien"
                           value={filters.maSinhVien}
                           onChange={handleFilterChange}
-                          placeholder="Nhập mã sinh viên..."
+                          placeholder="Nhập mã  nhân viên..."
                           className="shadow-sm"
                           style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
                         />
@@ -442,36 +437,100 @@ const AttendanceHistory = () => {
                       <Form.Group className="mb-0">
                         <Form.Label className="fw-semibold d-flex align-items-center mb-2">
                           <FaDoorOpen className="me-2 text-primary" />
-                          Phòng học
+                          Vị trí chấm công
                         </Form.Label>
-                        <Form.Control
-                          type="text"
-                          name="phongHoc"
-                          value={filters.phongHoc}
-                          onChange={handleFilterChange}
-                          placeholder="Nhập phòng học..."
+                        <Form.Select
+                          value={(filters.phongHoc && filters.phongHoc[0]) || ''}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setPage(1);
+                            setFilters((prev) => ({ ...prev, phongHoc: value ? [value] : [] }));
+                          }}
                           className="shadow-sm"
                           style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
-                        />
+                        >
+                          <option value="">Tất cả vị trí</option>
+                          {phongHocOptions.map((roomCode) => (
+                            <option key={roomCode} value={roomCode}>
+                              {roomCode}
+                            </option>
+                          ))}
+                        </Form.Select>
                       </Form.Group>
                     </Col>
-                    <Col xs={12} sm={6} md={4} lg={2} className="d-flex align-items-end">
-                      <Button 
-                        variant="outline-danger" 
-                        onClick={clearFilters}
-                        className="w-100 shadow-sm"
-                        style={{ 
-                          borderRadius: '0.375rem',
-                          fontWeight: '500',
-                          border: '1px solid #dc3545',
-                          position: 'relative',
-                          top: '-10px'
-                        }}
-                      >
-                        <FaTimes className="me-2 clear-filters" />
-                        Xóa bộ lọc
-                      </Button>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">Mã phòng ban</Form.Label>
+                        <Form.Select
+                          name="maPhongBan"
+                          value={filters.maPhongBan}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        >
+                          <option value="">Tất cả phòng ban</option>
+                          {phongBanOptions.map((code) => (
+                            <option key={code} value={code}>
+                              {code}
+                            </option>
+                          ))}
+                        </Form.Select>
+                      </Form.Group>
                     </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">Tình trạng</Form.Label>
+                        <Form.Select
+                          name="tinhTrang"
+                          value={filters.tinhTrang}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        >
+                          <option value="">Tất cả</option>
+                          <option value="DUNG_GIO">Đúng giờ</option>
+                          <option value="MUON">Muộn</option>
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                    <Col xs={12} sm={6} md={4} lg={2}>
+                      <Form.Group className="mb-0">
+                        <Form.Label className="fw-semibold d-flex align-items-center mb-2">Trạng thái</Form.Label>
+                        <Form.Select
+                          name="trangThai"
+                          value={filters.trangThai}
+                          onChange={handleFilterChange}
+                          className="shadow-sm"
+                          style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+                        >
+                          <option value="">Tất cả</option>
+                          <option value="DANG_HOC">Đang làm</option>
+                          <option value="DA_RA_VE">Đã ra về</option>
+                          <option value="RA_VE_SOM">Ra về sớm</option>
+                          <option value="KHONG_DIEM_DANH_RA">Không chấm công ra</option>
+                        </Form.Select>
+                      </Form.Group>
+                    </Col>
+                    {hasActiveFilters && (
+                      <Col xs={12} sm={6} md={4} lg={2} className="d-flex align-items-end">
+                        <Button 
+                          
+                          onClick={clearFilters}
+                          className="w-100 shadow-sm"
+                          style={{ 
+                            borderRadius: '0.375rem',
+                            fontWeight: '500',
+                        backgroundColor: '#212529',
+                        border: 'none',
+                            position: 'relative',
+                            top: '-2px'
+                          }}
+                        >
+                          <FaTimes className="me-2 clear-filters" />
+                          Xóa bộ lọc
+                        </Button>
+                      </Col>
+                    )}
                   </Row>
                 </Card.Body>
               </Card>
@@ -479,7 +538,7 @@ const AttendanceHistory = () => {
               <Row className="mt-4">
                 <Col md={12}>
                   <Card className="shadow-sm" style={{ border: 'none', backgroundColor: '#f8f9fa' }}>
-                    <Card.Header className="bg-info text-white d-flex align-items-center" style={{ border: 'none', borderRadius: '0.375rem 0.375rem 0 0' }}>
+                    <Card.Header className="text-white d-flex align-items-center" style={{ backgroundColor: '#212529', border: 'none', borderRadius: '0.375rem 0.375rem 0 0' }}>
                       <FaChartBar className="me-2" />
                       <h5 className="mb-0">Thống kê</h5>
                     </Card.Header>
@@ -509,7 +568,7 @@ const AttendanceHistory = () => {
                             <h4 className="text-warning mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.tinhTrangDiemDanh === 'MUON' || r.tinhTrangDiemDanh === 'muon').length}
                             </h4>
-                            <p className="text-muted small mb-0">Điểm danh muộn</p>
+                            <p className="text-muted small mb-0">Chấm công muộn</p>
                           </div>
                         </Col>
                         <Col xs={6} sm={4} md={2}>
@@ -518,7 +577,7 @@ const AttendanceHistory = () => {
                             <h4 className="text-info mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'DANG_HOC' || r.trangThai === 'dang_hoc').length}
                             </h4>
-                            <p className="text-muted small mb-0">Đang học</p>
+                            <p className="text-muted small mb-0">Đang làm</p>
                           </div>
                         </Col>
                         <Col xs={6} sm={4} md={2}>
@@ -536,48 +595,11 @@ const AttendanceHistory = () => {
                             <h4 className="text-danger mb-1 fw-bold">
                               {(allFilteredAttendance.length > 0 ? allFilteredAttendance : attendance).filter(r => r.trangThai === 'KHONG_DIEM_DANH_RA' || r.trangThai === 'khong_diem_danh_ra').length}
                             </h4>
-                            <p className="text-muted small mb-0">Không điểm danh ra</p>
+                            <p className="text-muted small mb-0">Không chấm công ra</p>
                           </div>
                         </Col>
                       </Row>
 
-
-              {/* Thông báo khi chọn lớp học phần */}
-              {filters.lopHocPhan && (
-                <Row className="mb-3">
-                  <Col>
-                    <Alert variant="info">
-                      <strong>ℹ️ Thông tin:</strong> Đang hiển thị tất cả phiếu điểm danh của lớp học phần này. Bạn có thể lọc thêm theo ngày, ca, mã sinh viên hoặc phòng học.
-                    </Alert>
-                  </Col>
-                </Row>
-              )}
-
-              {/* Thống kê lớp học phần */}
-              {filters.lopHocPhan && attendanceStats.totalStudents > 0 && (
-                <Row className="mb-3">
-                  <Col>
-                    <Alert variant="info">
-                      <strong>Thống kê lớp học phần:</strong>
-                      <div className="mt-2">
-                        <Badge bg="primary" className="me-2">
-                          Tổng số sinh viên: {attendanceStats.totalStudents}
-                        </Badge>
-                        <Badge bg="success" className="me-2">
-                          Tham gia: {attendanceStats.attended}
-                        </Badge>
-                        <Badge bg="danger" className="me-2">
-                          Vắng: {attendanceStats.absent}
-                        </Badge>
-                        <Badge bg="warning" className="me-2">
-                          Muộn: {attendanceStats.late}
-                        </Badge>
-                       
-                      </div>
-                    </Alert>
-                  </Col>
-                </Row>
-              )}
 
               {/* Bảng lịch sử */}
               <div className="table-responsive mt-4">
@@ -585,14 +607,16 @@ const AttendanceHistory = () => {
                   <thead className="table-primary">
                     <tr>
                       <th style={{ fontWeight: '600' }}>RFID</th>
-                      <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
-                      <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
-                      <th style={{ fontWeight: '600' }}>Phòng học</th>
+                      <th style={{ fontWeight: '600' }}>Mã  nhân viên</th>
+                      <th style={{ fontWeight: '600' }}>Tên  nhân viên</th>
+                      
+                      <th style={{ fontWeight: '600' }}>Mã phòng ban</th>
+                      <th style={{ fontWeight: '600' }}>Vị trí chấm công</th>
                       <th style={{ fontWeight: '600' }}>Ngày</th>
                       <th style={{ fontWeight: '600' }}>Ca</th>
                       <th style={{ fontWeight: '600' }}>Giờ vào</th>
                       <th style={{ fontWeight: '600' }}>Giờ ra</th>
-                      <th style={{ fontWeight: '600' }}>Tình trạng điểm danh</th>
+                      <th style={{ fontWeight: '600' }}>Tình trạng chấm công</th>
                       <th style={{ fontWeight: '600' }}>Trạng thái</th>
                     </tr>
                   </thead>
@@ -608,6 +632,8 @@ const AttendanceHistory = () => {
                           </Badge>
                         </td>
                         <td style={{ fontWeight: '500' }}>{record.tenSinhVien}</td>
+                       
+                        <td>{record.maPhongBan || <span className="text-muted">-</span>}</td>
                         <td>{record.phongHoc || <span className="text-muted">-</span>}</td>
                         <td>{new Date(record.ngay).toLocaleDateString('vi-VN')}</td>
                         <td>
@@ -630,8 +656,8 @@ const AttendanceHistory = () => {
                   <FaHistory size={64} className="text-muted mb-3" />
                   <Alert variant="info" className="d-inline-block">
                     {filters.lopHocPhan && (!filters.ngay || !filters.ca) 
-                      ? "Vui lòng chọn Ngày và Ca học để xem dữ liệu điểm danh của lớp học phần."
-                      : "Không có dữ liệu điểm danh nào được tìm thấy."
+                      ? "Vui lòng chọn Ngày và ca làm để xem dữ liệu chấm công của  ."
+                      : "Không có dữ liệu chấm công nào được tìm thấy."
                     }
                   </Alert>
                 </div>
@@ -641,7 +667,7 @@ const AttendanceHistory = () => {
               {filteredAttendance.length > 0 && (
                 <div className="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
                   <div className="text-muted fw-semibold">
-                    Trang <span className="text-primary">{page}</span>
+                    Trang <span className="text-primary">{page}</span> / {Math.max(totalPages, 1)} - Tổng {totalElements} bản ghi
                   </div>
                   <div className="d-flex gap-2">
                     <Button 
@@ -654,7 +680,7 @@ const AttendanceHistory = () => {
                     </Button>
                     <Button 
                       variant="outline-secondary" 
-                      disabled={attendance.length < page * pageSize || filteredAttendance.length < page * pageSize} 
+                      disabled={page >= totalPages} 
                       onClick={() => setPage(p => p + 1)}
                       className="shadow-sm"
                     >
@@ -678,96 +704,72 @@ const AttendanceHistory = () => {
         </Col>
       </Row>
 
-      {/* Modal chọn lớp học phần */}
-      <Modal
-        show={showLopHocPhanModal}
-        onHide={() => setShowLopHocPhanModal(false)}
-        size="lg"
-        centered
-      >
-        <Modal.Header closeButton>
-          <Modal.Title>Chọn lớp học phần</Modal.Title>
+      <Modal show={showPhongHocModal} onHide={() => setShowPhongHocModal(false)} centered>
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
+          <Modal.Title>Chọn vị trí chấm công</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form.Group className="mb-3">
-            <Form.Label>Tìm kiếm theo mã hoặc tên lớp học phần</Form.Label>
-            <Form.Control
-              type="text"
-              placeholder="Nhập mã lớp học phần hoặc tên lớp..."
-              value={lopHocPhanSearch}
-              onChange={(e) => setLopHocPhanSearch(e.target.value)}
-            />
-          </Form.Group>
-          <div style={{ height: '400px', overflowY: 'auto' }}>
-            <Table hover responsive size="sm" className="align-middle">
-              <thead>
-                <tr>
-                  <th style={{ width: '5%' }}></th>
-                  <th>Mã lớp học phần</th>
-                  <th>Tên lớp học phần</th>
-                </tr>
-              </thead>
-              <tbody>
-                {lopHocPhans
-                  .filter((lop) => {
-                    if (!lopHocPhanSearch.trim()) return true;
-                    const keyword = lopHocPhanSearch.toLowerCase();
-                    return (
-                      lop.maLopHocPhan.toLowerCase().includes(keyword) ||
-                      (lop.tenLopHocPhan || '').toLowerCase().includes(keyword)
-                    );
-                  })
-                  .map((lop) => (
-                    <tr
-                      key={lop.maLopHocPhan}
-                      style={{ cursor: 'pointer' }}
-                      onClick={() => {
-                        setFilters((prev) => ({
-                          ...prev,
-                          lopHocPhan: lop.maLopHocPhan,
-                        }));
-                        setSelectedLopHocPhanName(lop.tenLopHocPhan);
-                        setShowLopHocPhanModal(false);
-                      }}
-                    >
-                      <td>
-                        <Form.Check
-                          type="radio"
-                          name="lopHocPhanRadio"
-                          checked={filters.lopHocPhan === lop.maLopHocPhan}
-                          readOnly
-                        />
-                      </td>
-                      <td>
-                        <Badge bg="primary">{lop.maLopHocPhan}</Badge>
-                      </td>
-                      <td>{lop.tenLopHocPhan}</td>
-                    </tr>
-                  ))}
-                {lopHocPhans.length === 0 && (
-                  <tr>
-                    <td colSpan={3} className="text-center text-muted py-3">
-                      Chưa có lớp học phần nào
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </Table>
+          <Form.Control
+            type="text"
+            placeholder="Tìm vị trí..."
+            value={phongHocSearch}
+            onChange={(e) => setPhongHocSearch(e.target.value)}
+            className="mb-3"
+          />
+          <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+            {(phongHocOptions || [])
+              .filter((x) => x.toLowerCase().includes(phongHocSearch.toLowerCase()))
+              .map((roomCode) => (
+                <Form.Check
+                  key={roomCode}
+                  type="checkbox"
+                  className="mb-2"
+                  label={roomCode}
+                  checked={(filters.phongHoc || []).includes(roomCode)}
+                  onChange={() => togglePhongHoc(roomCode)}
+                />
+              ))}
           </div>
         </Modal.Body>
         <Modal.Footer>
-          <Button
-            variant="outline-secondary"
-            onClick={() => {
-              setFilters((prev) => ({ ...prev, lopHocPhan: '' }));
-              setSelectedLopHocPhanName('');
-            }}
-          >
-            Xóa lựa chọn
-          </Button>
-          <Button variant="secondary" onClick={() => setShowLopHocPhanModal(false)}>
-            Đóng
-          </Button>
+          <Button variant="outline-secondary" onClick={() => setFilters((prev) => ({ ...prev, phongHoc: [] }))}>Xóa lựa chọn</Button>
+          <Button variant="secondary" onClick={() => setShowPhongHocModal(false)}>Đóng</Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal show={showPhongBanModal} onHide={() => setShowPhongBanModal(false)} centered>
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
+          <Modal.Title>Chọn phòng ban</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Form.Control
+            type="text"
+            placeholder="Tìm mã phòng ban..."
+            value={phongBanSearch}
+            onChange={(e) => setPhongBanSearch(e.target.value)}
+            className="mb-3"
+          />
+          <div style={{ maxHeight: '320px', overflowY: 'auto' }}>
+            {(phongBanOptions || [])
+              .filter((x) => x.toLowerCase().includes(phongBanSearch.toLowerCase()))
+              .map((code) => {
+                const selected = (filters.maPhongBan || '').split(',').map(x => x.trim()).filter(Boolean).includes(code);
+                return (
+                  <Form.Check
+                    key={code}
+                    type="checkbox"
+                    className="mb-2"
+                    label={code}
+                    checked={selected}
+                    onChange={() => togglePhongBan(code)}
+                  />
+                );
+              })}
+          </div>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="outline-secondary" onClick={() => setFilters((prev) => ({ ...prev, maPhongBan: '' }))}>Xóa lựa chọn</Button>
+          <Button variant="secondary" onClick={() => setShowPhongBanModal(false)}>Đóng</Button>
         </Modal.Footer>
       </Modal>
     </Container>

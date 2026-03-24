@@ -8,14 +8,18 @@ import com.rfid.attendance.entity.PhieuDiemDanh;
 import com.rfid.attendance.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.data.domain.Page;
 
 import java.text.Normalizer;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
+import java.time.format.DateTimeFormatter;
 
 @RestController
 @RequestMapping("/api/attendance")
@@ -64,6 +68,70 @@ public class AttendanceController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
+
+    @GetMapping("/paged")
+    public ResponseEntity<?> getAttendancePaged(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "12") int size,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) Integer ca,
+            @RequestParam(required = false) String maSinhVien,
+            @RequestParam(required = false) String phongHoc,
+            @RequestParam(required = false) String tinhTrang,
+            @RequestParam(required = false) String trangThai,
+            @RequestParam(required = false) String maPhongBan
+    ) {
+        try {
+            Page<PhieuDiemDanh> result = attendanceService.getAttendanceByAdvancedFiltersPaged(
+                    startDate, endDate, ca, maSinhVien, phongHoc, maPhongBan, tinhTrang, trangThai, page, size
+            );
+            return ResponseEntity.ok(Map.of(
+                    "content", result.getContent(),
+                    "page", result.getNumber(),
+                    "size", result.getSize(),
+                    "totalElements", result.getTotalElements(),
+                    "totalPages", result.getTotalPages()
+            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Lỗi khi lấy dữ liệu điểm danh phân trang", "message", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/export")
+    public ResponseEntity<?> exportAttendanceExcel(
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
+            @RequestParam(required = false) Integer ca,
+            @RequestParam(required = false) String maSinhVien,
+            @RequestParam(required = false) String phongHoc,
+            @RequestParam(required = false) String tinhTrang,
+            @RequestParam(required = false) String trangThai,
+            @RequestParam(required = false) String maPhongBan
+    ) {
+        try {
+            byte[] fileBytes = attendanceService.exportAttendanceExcelByFilters(
+                    startDate, endDate, ca, maSinhVien, phongHoc, maPhongBan, tinhTrang, trangThai
+            );
+            String filename = "BangChamCong_" +
+                    (startDate != null ? startDate.format(DateTimeFormatter.ISO_DATE) : "") +
+                    "_" +
+                    (endDate != null ? endDate.format(DateTimeFormatter.ISO_DATE) : "") +
+                    ".xlsx";
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                    .body(fileBytes);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Lỗi khi xuất file excel", "message", e.getMessage()));
+        }
+    }
     
     @GetMapping("/filter")
     public ResponseEntity<List<PhieuDiemDanh>> getAttendanceByFilters(
@@ -97,6 +165,7 @@ public class AttendanceController {
             PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(request.getRfid(), request.getMaThietBi());
             String tensv = removeAccent(attendance.getTenSinhVien());
             attendance.setTenSinhVien(tensv);
+            System.out.println(attendance.getNgay()+"ngày chấm công");
             if (attendance.getRfid() == null) {
                 return ResponseEntity.ok(new RfidResponse("not_found", ""));
             }

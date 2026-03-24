@@ -60,6 +60,24 @@ export const attendanceAPI = {
     const query = params.toString();
     return api.get(`/attendance/range${query ? `?${query}` : ''}`);
   },
+  getPaged: (params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+        query.append(key, value);
+      }
+    });
+    return api.get(`/attendance/paged?${query.toString()}`);
+  },
+  exportExcel: (params = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && `${value}`.trim() !== '') {
+        query.append(key, value);
+      }
+    });
+    return api.get(`/attendance/export?${query.toString()}`, { responseType: 'blob' });
+  },
   getByFilters: (ngay, ca, maSinhVien, phongHoc) => {
     const params = new URLSearchParams();
     if (ngay) params.append('ngay', ngay);
@@ -127,6 +145,24 @@ export const roomAPI = {
     if (ngay) params.append('ngay', ngay);
     return api.get(`/phonghoc/schedule?${params.toString()}`);
   },
+};
+
+// Ca làm (shift) API
+export const caLamAPI = {
+  getAll: () => api.get('/calam'),
+  getByMaCa: (maCa) => api.get(`/calam/${maCa}`),
+  create: (data) => api.post('/calam', data),
+  update: (maCa, data) => api.put(`/calam/${maCa}`, data),
+  delete: (maCa) => api.delete(`/calam/${maCa}`),
+};
+
+// Phong ban API
+export const phongBanAPI = {
+  getAll: () => api.get('/phongban'),
+  getOne: (maPhongBan) => api.get(`/phongban/${maPhongBan}`),
+  create: (data) => api.post('/phongban', data),
+  update: (maPhongBan, data) => api.put(`/phongban/${maPhongBan}`, data),
+  delete: (maPhongBan) => api.delete(`/phongban/${maPhongBan}`),
 };
 
 export default api;

@@ -22,7 +22,7 @@ const CustomNavbar = () => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <Navbar bg="primary" variant="dark" expand="lg" className="shadow-sm" style={{ position: 'sticky', top: 0, left: 0, right: 0, zIndex: 1000, borderBottom: '3px solid #0a58ca' }}>
+    <Navbar bg="dark" variant="dark" expand="lg" className="shadow-sm" style={{ backgroundColor: '#212529', position: 'sticky', top: 0, left: 0, right: 0, zIndex: 1000, borderBottom: '3px solid #212529' }}>
       <Container fluid>
         <LinkContainer to="/dashboard">
           <Navbar.Brand className="d-flex align-items-center" style={{ cursor: 'pointer' }}>
@@ -35,7 +35,7 @@ const CustomNavbar = () => {
               alt="Logo"
             />
             <div className="d-flex flex-column">
-              <span style={{ fontSize: '20px', fontWeight: '600', lineHeight: '1.2' }}>Hệ thống điểm danh RFID</span>
+              <span style={{ fontSize: '20px', fontWeight: '600', lineHeight: '1.2' }}>Hệ thống chấm công </span>
               <small style={{ fontSize: '12px', opacity: 0.8, textAlign: 'left'}}>Học viện Kỹ thuật Mật mã</small>
             </div>
           </Navbar.Brand>
@@ -43,7 +43,7 @@ const CustomNavbar = () => {
 
         <Navbar.Toggle aria-controls="basic-navbar-nav" style={{ borderColor: 'rgba(255,255,255,0.5)' }} />
         <Navbar.Collapse id="basic-navbar-nav">
-          <Nav className="me-auto" style={{ gap: '5px' }}>
+          <Nav className="ms-auto me-3" style={{ gap: '5px' }}>
             <LinkContainer to="/dashboard">
               <Nav.Link 
                 className={`d-flex align-items-center ${isActive('/dashboard') ? 'active' : ''}`}
@@ -56,7 +56,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHome className="me-2" />
-                <span style={{ fontSize: '20px' }}>Dashboard</span>
+                <span style={{ fontSize: '20px' }}>Thống kê</span>
               </Nav.Link>
             </LinkContainer>
             <LinkContainer to="/students">
@@ -71,24 +71,10 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaUsers className="me-2" />
-                <span style={{ fontSize: '20px' }}>Sinh viên</span>
+                <span style={{ fontSize: '20px' }}>Nhân viên</span>
               </Nav.Link>
             </LinkContainer>
-            <LinkContainer to="/lophocphan">
-              <Nav.Link 
-                className={`d-flex align-items-center ${isActive('/lophocphan') ? 'active' : ''}`}
-                style={{ 
-                  borderRadius: '0.375rem',
-                  padding: '0.5rem 1rem',
-                  fontWeight: isActive('/lophocphan') ? '600' : '400',
-                  backgroundColor: isActive('/lophocphan') ? 'rgba(255,255,255,0.15)' : 'transparent',
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                <FaGraduationCap className="me-2" />
-                <span style={{ fontSize: '20px' }}>Lớp học phần</span>
-              </Nav.Link>
-            </LinkContainer>
+            
             <LinkContainer to="/attendance">
               <Nav.Link 
                 className={`d-flex align-items-center ${isActive('/attendance') ? 'active' : ''}`}
@@ -101,24 +87,10 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaHistory className="me-2" />
-                <span style={{ fontSize: '20px' }}>Lịch sử điểm danh</span>
+                <span style={{ fontSize: '20px' }}>Lịch sử chấm công</span>
               </Nav.Link>
             </LinkContainer>
-            <LinkContainer to="/room">
-              <Nav.Link 
-                className={`d-flex align-items-center ${isActive('/room') ? 'active' : ''}`}
-                style={{ 
-                  borderRadius: '0.375rem',
-                  padding: '0.5rem 1rem',
-                  fontWeight: isActive('/room') ? '600' : '400',
-                  backgroundColor: isActive('/room') ? 'rgba(255,255,255,0.15)' : 'transparent',
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                <FaBuilding className="me-2" />
-                <span style={{ fontSize: '20px' }}>Phòng học</span>
-              </Nav.Link>
-            </LinkContainer>
+           
             <LinkContainer to="/configuration">
               <Nav.Link 
                 className={`d-flex align-items-center ${isActive('/configuration') ? 'active' : ''}`}
@@ -131,7 +103,7 @@ const CustomNavbar = () => {
                 }}
               >
                 <FaCog className="me-2" />
-                <span style={{ fontSize: '20px' }}>Thiết lập</span>
+                <span style={{ fontSize: '20px' }}>Cài đặt</span>
               </Nav.Link>
             </LinkContainer>
           </Nav>
@@ -157,10 +129,10 @@ const CustomNavbar = () => {
               <Dropdown.Menu className="shadow-lg" style={{ border: 'none', borderRadius: '0.5rem', marginTop: '10px' }}>
                 <Dropdown.Header className="bg-light">
                   <div className="text-center p-2">
-                    <FaUserCircle size={48} className="text-primary mb-2" />
+                    <FaUserCircle size={48} className="mb-2" style={{ color: '#212529' }} />
                     <div className="fw-bold">{user?.fullName}</div>
                     <small className="text-muted d-block">{user?.username}</small>
-                    <Badge bg="primary" className="mt-2" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>
+                    <Badge className="mt-2" style={{ backgroundColor: '#212529', fontSize: '0.85rem', padding: '0.4rem 0.8rem' }}>
                       {user?.roleDescription}
                     </Badge>
                   </div>

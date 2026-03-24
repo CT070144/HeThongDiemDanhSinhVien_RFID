@@ -4,10 +4,12 @@ import com.rfid.attendance.dto.RoomDetailDTO;
 import com.rfid.attendance.dto.RoomScheduleDTO;
 import com.rfid.attendance.dto.RoomStatusDTO;
 import com.rfid.attendance.entity.CaHoc;
+import com.rfid.attendance.entity.CaLam;
 import com.rfid.attendance.entity.LopHocPhan;
 import com.rfid.attendance.entity.PhieuDiemDanh;
 import com.rfid.attendance.entity.PhongHoc;
 import com.rfid.attendance.repository.CaHocRepository;
+import com.rfid.attendance.repository.CaLamRepository;
 import com.rfid.attendance.repository.LopHocPhanRepository;
 import com.rfid.attendance.repository.PhieuDiemDanhRepository;
 import com.rfid.attendance.repository.PhongHocRepository;
@@ -31,17 +33,20 @@ public class RoomStatusService {
 
     private final PhongHocRepository phongHocRepository;
     private final CaHocRepository caHocRepository;
+    private final CaLamRepository caLamRepository;
     private final PhieuDiemDanhRepository phieuDiemDanhRepository;
     private final LopHocPhanRepository lopHocPhanRepository;
     private final SinhVienLopHocPhanRepository sinhVienLopHocPhanRepository;
 
     public RoomStatusService(PhongHocRepository phongHocRepository,
                             CaHocRepository caHocRepository,
+                            CaLamRepository caLamRepository,
                             PhieuDiemDanhRepository phieuDiemDanhRepository,
                             LopHocPhanRepository lopHocPhanRepository,
                             SinhVienLopHocPhanRepository sinhVienLopHocPhanRepository) {
         this.phongHocRepository = phongHocRepository;
         this.caHocRepository = caHocRepository;
+        this.caLamRepository = caLamRepository;
         this.phieuDiemDanhRepository = phieuDiemDanhRepository;
         this.lopHocPhanRepository = lopHocPhanRepository;
         this.sinhVienLopHocPhanRepository = sinhVienLopHocPhanRepository;
@@ -250,32 +255,61 @@ public class RoomStatusService {
      * Xác định ca học hiện tại dựa trên thời gian
      */
     private Integer getCurrentCa() {
-        LocalTime now = LocalTime.now();
-        int hour = now.getHour();
-        int minute = now.getMinute();
-        int totalMinutes = hour * 60 + minute;
+        // Nếu chưa có cấu hình ca từ DB, fallback giữ nguyên hành vi cũ.
+        if (caLamRepository.count() == 0) {
+            LocalTime now = LocalTime.now();
+            int hour = now.getHour();
+            int minute = now.getMinute();
+            int totalMinutes = hour * 60 + minute;
 
-        // Ca 1: 07:00-09:25 (420-565)
-        if (totalMinutes >= 420 && totalMinutes < 565) {
-            return 1;
+            // Ca 1: 07:00-09:25 (420-565)
+            if (totalMinutes >= 420 && totalMinutes < 565) {
+                return 1;
+            }
+            // Ca 2: 09:35-12:00 (575-720)
+            if (totalMinutes >= 575 && totalMinutes < 720) {
+                return 2;
+            }
+            // Ca 3: 12:30-14:55 (750-895)
+            if (totalMinutes >= 750 && totalMinutes < 895) {
+                return 3;
+            }
+            // Ca 4: 15:05-17:30 (905-1050)
+            if (totalMinutes >= 905 && totalMinutes < 1050) {
+                return 4;
+            }
+            // Ca 5: 18:00-20:30 (1080-1230)
+            if (totalMinutes >= 1080 && totalMinutes < 1230) {
+                return 5;
+            }
+            return null;
         }
-        // Ca 2: 09:35-12:00 (575-720)
-        if (totalMinutes >= 575 && totalMinutes < 720) {
-            return 2;
+
+        LocalTime now = LocalTime.now();
+        List<CaLam> shifts = caLamRepository.findAllByOrderByMaCaAsc();
+        if (shifts == null || shifts.isEmpty()) {
+            return null;
         }
-        // Ca 3: 12:30-14:55 (750-895)
-        if (totalMinutes >= 750 && totalMinutes < 895) {
-            return 3;
+
+        // Cho phép điểm danh từ trước giờ bắt đầu 10 phút và tối đa sau giờ kết thúc 10 phút.
+        // Với ca cuối cùng, cho phép thêm buffer lớn để hạn chế trường hợp rớt ca.
+        for (int i = 0; i < shifts.size(); i++) {
+            CaLam shift = shifts.get(i);
+            if (shift == null || shift.getGioBatDau() == null || shift.getGioKetThuc() == null) {
+                continue;
+            }
+            LocalTime startWindow = shift.getGioBatDau().minusMinutes(10);
+            LocalTime endWindow = shift.getGioKetThuc().plusMinutes(10);
+            if (i == shifts.size() - 1) {
+                endWindow = LocalTime.of(23, 59);
+            }
+
+            boolean inWindow = !now.isBefore(startWindow) && !now.isAfter(endWindow);
+            if (inWindow) {
+                return shift.getMaCa();
+            }
         }
-        // Ca 4: 15:05-17:30 (905-1050)
-        if (totalMinutes >= 905 && totalMinutes < 1050) {
-            return 4;
-        }
-        // Ca 5: 18:00-20:30 (1080-1230)
-        if (totalMinutes >= 1080 && totalMinutes < 1230) {
-            return 5;
-        }
-        // Ngoài giờ học
+
         return null;
     }
 
@@ -286,6 +320,17 @@ public class RoomStatusService {
         if (ca == null) {
             return new String[]{"", ""};
         }
+
+        // Nếu đã có cấu hình thì ưu tiên lấy từ DB.
+        if (caLamRepository.count() > 0) {
+            Optional<CaLam> shiftOpt = caLamRepository.findByMaCa(ca);
+            if (shiftOpt.isPresent()) {
+                CaLam shift = shiftOpt.get();
+                return new String[]{shift.getGioBatDau().toString(), shift.getGioKetThuc().toString()};
+            }
+        }
+
+        // Fallback giá trị cũ (tránh case DB chưa có dữ liệu).
         return switch (ca) {
             case 1 -> new String[]{"07:00", "09:25"};
             case 2 -> new String[]{"09:35", "12:00"};

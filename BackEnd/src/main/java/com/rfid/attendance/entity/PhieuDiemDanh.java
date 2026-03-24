@@ -26,6 +26,9 @@ public class PhieuDiemDanh {
     @Column(name = "tensinhvien", length = 100)
     @NotBlank(message = "Tên sinh viên không được để trống")
     private String tenSinhVien;
+
+    @Column(name = "maphongban", length = 50)
+    private String maPhongBan;
     
     @Column(name = "phonghoc", length = 50)
     private String phongHoc;
@@ -153,6 +156,14 @@ public class PhieuDiemDanh {
     
     public void setTenSinhVien(String tenSinhVien) {
         this.tenSinhVien = tenSinhVien;
+    }
+
+    public String getMaPhongBan() {
+        return maPhongBan;
+    }
+
+    public void setMaPhongBan(String maPhongBan) {
+        this.maPhongBan = maPhongBan;
     }
     
     public String getPhongHoc() {

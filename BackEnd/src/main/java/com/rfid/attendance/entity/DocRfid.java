@@ -27,6 +27,12 @@ public class DocRfid {
     
     @Column(name = "processed")
     private Boolean processed = false;
+
+    @Column(name = "mathietbi", length = 50)
+    private String maThietBi;
+
+    @Column(name = "phonghoc", length = 100)
+    private String phongHoc;
     
     @PrePersist
     protected void onCreate() {
@@ -93,5 +99,21 @@ public class DocRfid {
     
     public void setProcessed(Boolean processed) {
         this.processed = processed;
+    }
+
+    public String getMaThietBi() {
+        return maThietBi;
+    }
+
+    public void setMaThietBi(String maThietBi) {
+        this.maThietBi = maThietBi;
+    }
+
+    public String getPhongHoc() {
+        return phongHoc;
+    }
+
+    public void setPhongHoc(String phongHoc) {
+        this.phongHoc = phongHoc;
     }
 }

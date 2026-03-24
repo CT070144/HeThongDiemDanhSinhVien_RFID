@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback,useRef } from 'react';
 import { Container, Row, Col, Card, Table, Button, Alert, Badge, Dropdown } from 'react-bootstrap';
-import { studentAPI, attendanceAPI, deviceAPI } from '../services/api';
+import { studentAPI, attendanceAPI, deviceAPI, caLamAPI } from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import { FaUsers, FaCalendarCheck, FaExclamationTriangle, FaClock, FaChartBar, FaChartPie, FaChartLine, FaSync, FaFilter } from 'react-icons/fa';
 import {
@@ -44,6 +44,7 @@ const Dashboard = () => {
   const [page, setPage] = useState(1);
   const [pageSize] = useState(5);
   const [devices, setDevices] = useState([]);
+  const [caLams, setCaLams] = useState([]);
   const [loading, setLoading] = useState(false);
   const socketRef = useRef(null);
   const [chartData, setChartData] = useState({
@@ -156,9 +157,14 @@ const Dashboard = () => {
       setLoading(true);
       const { startDate, endDate } = computeDateRange();
       
-      // Load students count
-      const studentsResponse = await studentAPI.getAll();
+      // Load base data
+      const [studentsResponse, caLamResponse] = await Promise.all([
+        studentAPI.getAll(),
+        caLamAPI.getAll()
+      ]);
       const totalStudents = studentsResponse.data.length;
+      const caLamData = (caLamResponse.data || []).slice().sort((a, b) => (a.maCa || 0) - (b.maCa || 0));
+      setCaLams(caLamData);
 
       // Load attendance by date range
       let attendanceResponse;
@@ -174,8 +180,8 @@ const Dashboard = () => {
       const rfidsResponse = await attendanceAPI.getUnprocessedRfids();
       const unprocessedRfids = rfidsResponse.data.filter(rfid => !rfid.processed).length;
 
-      // Determine current ca
-      const currentCa = getCurrentCa();
+      // Determine current ca from DB shifts
+      const currentCa = getCurrentCa(caLamData);
 
       setStats({
         totalStudents,
@@ -245,27 +251,48 @@ const Dashboard = () => {
     };
   }, []);
 
-  const getCurrentCa = () => {
+  const getCurrentCa = (shiftList = caLams) => {
+    if (!shiftList || shiftList.length === 0) return 0;
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
     const currentTime = hour * 60 + minute;
 
-    if (currentTime >= 420 && currentTime < 570) return 1; // 07:00 - 09:30
-    if (currentTime >= 570 && currentTime < 720) return 2; // 09:30 - 12:00
-    if (currentTime >= 750 && currentTime < 900) return 3; // 12:30 - 15:00
-    if (currentTime >= 900 && currentTime < 1050) return 4; // 15:00 - 17:30
-    return 0; // Ngoài giờ học
+    const toMinutes = (timeStr) => {
+      if (!timeStr || typeof timeStr !== 'string') return null;
+      const hh = parseInt(timeStr.substring(0, 2), 10);
+      const mm = parseInt(timeStr.substring(3, 5), 10);
+      if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+      return hh * 60 + mm;
+    };
+
+    for (const shift of shiftList) {
+      const start = toMinutes(shift.gioBatDau);
+      const end = toMinutes(shift.gioKetThuc);
+      if (start === null || end === null || shift.maCa == null) continue;
+
+      // Ca qua đêm: ví dụ 22:00 -> 06:00
+      if (end < start) {
+        if (currentTime >= start || currentTime <= end) {
+          return shift.maCa;
+        }
+      } else if (currentTime >= start && currentTime <= end) {
+        return shift.maCa;
+      }
+    }
+    return 0;
   };
 
   const getCaName = (ca) => {
-    const caMap = {
-      1: 'Ca 1 (07:00-09:30)',
-      2: 'Ca 2 (09:30-12:00)',
-      3: 'Ca 3 (12:30-15:00)',
-      4: 'Ca 4 (15:00-17:30)'
-    };
-    return caMap[ca] || 'Ngoài giờ học';
+    if (ca == null || ca === 0) return 'Ngoài giờ làm';
+    const shift = (caLams || []).find(item => Number(item.maCa) === Number(ca));
+    if (!shift) return `Ca ${ca}`;
+    const start = typeof shift.gioBatDau === 'string' ? shift.gioBatDau.substring(0, 5) : '';
+    const end = typeof shift.gioKetThuc === 'string' ? shift.gioKetThuc.substring(0, 5) : '';
+    if (start && end) {
+      return `${shift.tenCa || `Ca ${shift.maCa}`} (${start}-${end})`;
+    }
+    return shift.tenCa || `Ca ${shift.maCa}`;
   };
 
   const calculateChartData = (attendanceData) => {
@@ -275,10 +302,10 @@ const Dashboard = () => {
     const attendanceStatus = {
       'Đúng giờ': 0,
       'Muộn': 0,
-      'Đang học': 0,
+      'Đang làm': 0,
       'Đã ra về': 0,
       'Ra về sớm': 0,
-      'Không điểm danh ra': 0
+      'Không chấm công ra': 0
     };
 
     attendanceData.forEach(record => {
@@ -300,13 +327,13 @@ const Dashboard = () => {
       }
 
       if (record.trangThai === 'DANG_HOC' || record.trangThai === 'dang_hoc') {
-        attendanceStatus['Đang học']++;
+        attendanceStatus['Đang làm']++;
       } else if (record.trangThai === 'DA_RA_VE' || record.trangThai === 'da_ra_ve') {
         attendanceStatus['Đã ra về']++;
       } else if (record.trangThai === 'RA_VE_SOM' || record.trangThai === 'ra_ve_som') {
         attendanceStatus['Ra về sớm']++;
       } else if (record.trangThai === 'KHONG_DIEM_DANH_RA' || record.trangThai === 'khong_diem_danh_ra') {
-        attendanceStatus['Không điểm danh ra']++;
+        attendanceStatus['Không chấm công ra']++;
       }
     });
 
@@ -324,14 +351,14 @@ const Dashboard = () => {
       'muon': { variant: 'warning', text: 'Muộn' },
       'DUNG_GIO': { variant: 'success', text: 'Đúng giờ' },
       'dung_gio': { variant: 'success', text: 'Đúng giờ' },
-      'DANG_HOC': { variant: 'primary', text: 'Đang học' },
-      'dang_hoc': { variant: 'primary', text: 'Đang học' },
+      'DANG_HOC': { variant: 'primary', text: 'Đang làm' },
+      'dang_hoc': { variant: 'primary', text: 'Đang làm' },
       'DA_RA_VE': { variant: 'success', text: 'Đã ra về' },
       'da_ra_ve': { variant: 'success', text: 'Đã ra về' },
       'RA_VE_SOM': { variant: 'warning', text: 'Ra về sớm' },
       'ra_ve_som': { variant: 'warning', text: 'Ra về sớm' },
-      'KHONG_DIEM_DANH_RA': { variant: 'danger', text: 'Không điểm danh ra' },
-      'khong_diem_danh_ra': { variant: 'danger', text: 'Không điểm danh ra' }
+      'KHONG_DIEM_DANH_RA': { variant: 'danger', text: 'Không chấm công ra' },
+      'khong_diem_danh_ra': { variant: 'danger', text: 'Không chấm công ra' }
     };
     
     const status = statusMap[trangThai] || { variant: 'light', text: trangThai };
@@ -339,18 +366,32 @@ const Dashboard = () => {
   };
 
   // Chart configurations
+  const chartCaLabels = (() => {
+    if (caLams.length > 0) {
+      return caLams.map(shift => shift.tenCa || `Ca ${shift.maCa}`);
+    }
+    return ['Ca 1', 'Ca 2', 'Ca 3', 'Ca 4', 'Ca 5'];
+  })();
+
+  const chartCaValues = (() => {
+    if (caLams.length > 0) {
+      return caLams.map(shift => chartData.attendanceByCa[shift.maCa] || 0);
+    }
+    return [
+      chartData.attendanceByCa[1] || 0,
+      chartData.attendanceByCa[2] || 0,
+      chartData.attendanceByCa[3] || 0,
+      chartData.attendanceByCa[4] || 0,
+      chartData.attendanceByCa[5] || 0
+    ];
+  })();
+
   const attendanceByCaChartData = {
-    labels: ['Ca 1', 'Ca 2', 'Ca 3', 'Ca 4', 'Ca 5'],
+    labels: chartCaLabels,
     datasets: [
       {
-        label: 'Số lượng điểm danh',
-        data: [
-          chartData.attendanceByCa[1] || 0,
-          chartData.attendanceByCa[2] || 0,
-          chartData.attendanceByCa[3] || 0,
-          chartData.attendanceByCa[4] || 0,
-          chartData.attendanceByCa[5] || 0
-        ],
+        label: 'Số lượng chấm công',
+        data: chartCaValues,
         backgroundColor: [
           'rgba(54, 162, 235, 0.8)',
           'rgba(255, 99, 132, 0.8)',
@@ -374,7 +415,7 @@ const Dashboard = () => {
     labels: Array.from({length: 24}, (_, i) => `${i}:00`),
     datasets: [
       {
-        label: 'Số lượng điểm danh',
+        label: 'Số lượng chấm công',
         data: chartData.attendanceByHour,
         borderColor: 'rgba(75, 192, 192, 1)',
         backgroundColor: 'rgba(75, 192, 192, 0.2)',
@@ -392,10 +433,10 @@ const Dashboard = () => {
         backgroundColor: [
           '#28a745', // Đúng giờ - xanh lá
           '#ffc107', // Muộn - vàng
-          '#609d25', // Đang học - xanh dương
+          '#609d25', // Đang làm - xanh dương
           '#007bff', // Đã ra về - xanh lá
           '#fd7e14', // Ra về sớm - cam
-          '#dc3545'  // Không điểm danh ra - đỏ
+          '#dc3545'  // Không chấm công ra - đỏ
         ],
         borderColor: [
           '#28a745',
@@ -445,7 +486,7 @@ const Dashboard = () => {
             <Col>
               <h2 className="mb-0 d-flex align-items-center">
                 <FaChartBar className="me-2 text-primary" />
-                Dashboard - Hệ thống điểm danh RFID
+                Dashboard - Hệ thống chấm công 
               </h2>
             </Col>
             <Col xs="auto">
@@ -603,7 +644,7 @@ const Dashboard = () => {
                     <FaUsers size={48} className="text-primary" />
                   </div>
                   <h2 className="text-primary mb-2 fw-bold">{stats.totalStudents}</h2>
-                  <p className="mb-0 text-muted fw-semibold">Tổng số sinh viên</p>
+                  <p className="mb-0 text-muted fw-semibold">Tổng số nhân viên</p>
                 </Card.Body>
               </Card>
             </Col>
@@ -614,7 +655,7 @@ const Dashboard = () => {
                     <FaCalendarCheck size={48} className="text-success" />
                   </div>
                   <h2 className="text-success mb-2 fw-bold">{stats.todayAttendance}</h2>
-                  <p className="mb-0 text-muted fw-semibold">Điểm danh</p>
+                  <p className="mb-0 text-muted fw-semibold">Tổng lượt chấm công</p>
                 </Card.Body>
               </Card>
             </Col>
@@ -649,7 +690,7 @@ const Dashboard = () => {
                 <Card.Header className="bg-primary text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
                   <h5 className="mb-0 d-flex align-items-center">
                     <FaChartBar className="me-2" />
-                    Điểm danh theo ca học
+                    Thống kê chấm công theo ca làm
                   </h5>
                 </Card.Header>
                 <Card.Body className="p-4">
@@ -662,7 +703,7 @@ const Dashboard = () => {
                           ...chartOptions.plugins,
                           title: {
                             ...chartOptions.plugins.title,
-                            text: 'Thống kê điểm danh theo từng ca học'
+                            text: 'Thống kê chấm công theo từng ca làm'
                           }
                         }
                       }} 
@@ -676,7 +717,7 @@ const Dashboard = () => {
                 <Card.Header className="bg-success text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
                   <h5 className="mb-0 d-flex align-items-center">
                     <FaChartPie className="me-2" />
-                    Trạng thái điểm danh
+                    Phân bố trạng thái chấm công
                   </h5>
                 </Card.Header>
                 <Card.Body className="p-4">
@@ -689,7 +730,7 @@ const Dashboard = () => {
                           ...doughnutOptions.plugins,
                           title: {
                             ...doughnutOptions.plugins.title,
-                            text: 'Phân bố trạng thái điểm danh'
+                            text: 'Phân bố trạng thái chấm công'
                           }
                         }
                       }} 
@@ -707,7 +748,7 @@ const Dashboard = () => {
                 <Card.Header className="bg-info text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
                   <h5 className="mb-0 d-flex align-items-center">
                     <FaChartLine className="me-2" />
-                    Điểm danh theo giờ trong ngày
+                    Xu hướng chấm công theo giờ trong ngày
                   </h5>
                 </Card.Header>
                 <Card.Body className="p-4">
@@ -720,7 +761,7 @@ const Dashboard = () => {
                           ...chartOptions.plugins,
                           title: {
                             ...chartOptions.plugins.title,
-                            text: 'Xu hướng điểm danh theo từng giờ'
+                            text: 'Xu hướng chấm công theo từng giờ'
                           }
                         },
                         scales: {
@@ -733,7 +774,7 @@ const Dashboard = () => {
                           y: {
                             title: {
                               display: true,
-                              text: 'Số lượng điểm danh'
+                              text: 'Số lượng chấm công'
                             },
                             beginAtZero: true
                           }
@@ -746,12 +787,12 @@ const Dashboard = () => {
             </Col>
           </Row>
 
-          {/* Điểm danh hôm nay */}
+          {/* chấm công hôm nay */}
           <Row>
             <Col>
               <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
-                <Card.Header className="bg-secondary text-white d-flex justify-content-between align-items-center" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
-                  <h4 className="mb-0">Điểm danh theo khoảng thời gian</h4>
+                <Card.Header className=" text-white d-flex justify-content-between align-items-center" style={{ border: 'none',backgroundColor: '#212529', borderRadius: '0.5rem 0.5rem 0 0' }}>
+                  <h4 className="mb-0">Chấm công theo khoảng thời gian</h4>
                   <Button variant="light" onClick={loadDashboardData} disabled={loading} className="shadow-sm">
                     <FaSync className={`me-2 ${loading ? 'fa-spin' : ''}`} />
                     {loading ? 'Đang tải...' : 'Làm mới'}
@@ -764,8 +805,8 @@ const Dashboard = () => {
                         <thead className="table-secondary">
                           <tr>
                             <th style={{ fontWeight: '600' }}>RFID</th>
-                            <th style={{ fontWeight: '600' }}>Mã sinh viên</th>
-                            <th style={{ fontWeight: '600' }}>Tên sinh viên</th>
+                            <th style={{ fontWeight: '600' }}>Mã nhân viên</th>
+                            <th style={{ fontWeight: '600' }}>Tên nhân viên</th>
                             <th style={{ fontWeight: '600' }}>Ca</th>
                             <th style={{ fontWeight: '600' }}>Giờ vào</th>
                             <th style={{ fontWeight: '600' }}>Giờ ra</th>
@@ -801,7 +842,7 @@ const Dashboard = () => {
                     </div>
                   ) : (
                     <Alert variant="info" className="mb-0">
-                      Chưa có điểm danh nào hôm nay.
+                      Chưa có chấm công nào hôm nay.
                     </Alert>
                   )}
                   {todayAttendance.length > 0 && (
@@ -830,47 +871,7 @@ const Dashboard = () => {
           </Row>
 
           {/* Hướng dẫn sử dụng */}
-          <Row className="mt-4">
-            <Col>
-              <Card className="shadow-sm" style={{ border: '2px solid #dee2e6', borderRadius: '0.5rem' }}>
-                <Card.Header className="bg-dark text-white" style={{ border: 'none', borderRadius: '0.5rem 0.5rem 0 0' }}>
-                  <h4 className="mb-0">Hướng dẫn sử dụng hệ thống</h4>
-                </Card.Header>
-                <Card.Body className="p-4">
-                  <Row>
-                    <Col md={6}>
-                      <div className="p-3 bg-light rounded mb-3" style={{ border: '1px solid #dee2e6' }}>
-                        <h5 className="text-primary mb-3">Quản lý sinh viên:</h5>
-                        <ul className="mb-0">
-                          <li>Thêm, sửa, xóa thông tin sinh viên</li>
-                          <li>Tìm kiếm sinh viên theo mã hoặc tên</li>
-                          <li>Mỗi sinh viên có RFID duy nhất</li>
-                        </ul>
-                      </div>
-                    </Col>
-                    <Col md={6}>
-                      <div className="p-3 bg-light rounded mb-3" style={{ border: '1px solid #dee2e6' }}>
-                        <h5 className="text-success mb-3">Điểm danh:</h5>
-                        <ul className="mb-0">
-                          <li>ESP32 tự động đọc thẻ RFID</li>
-                          <li>Hệ thống tự động xác định ca học</li>
-                          <li>Theo dõi trạng thái: vào, ra, muộn</li>
-                        </ul>
-                      </div>
-                    </Col>
-                  </Row>
-                  <Row className="mt-3">
-                    <Col md={12}>
-                      <Alert variant="success" className="mb-0" style={{ border: '1px solid #28a745' }}>
-                        <strong>Lưu ý:</strong> Hệ thống tự động cập nhật dữ liệu real-time. 
-                        Khi có sinh viên điểm danh, thông tin sẽ hiển thị ngay lập tức trên dashboard.
-                      </Alert>
-                    </Col>
-                  </Row>
-                </Card.Body>
-              </Card>
-            </Col>
-          </Row>
+         
         </Col>
       </Row>
     </Container>

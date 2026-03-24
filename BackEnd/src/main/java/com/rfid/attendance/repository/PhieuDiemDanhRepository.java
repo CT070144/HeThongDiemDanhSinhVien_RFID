@@ -59,13 +59,56 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = CURRENT_DATE ORDER BY p.ca ASC, p.createdAt DESC")
     Page<PhieuDiemDanh> findTodayAttendancePaged(Pageable pageable);
 
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE " +
+            "(:startDate IS NULL OR p.ngay >= :startDate) AND " +
+            "(:endDate IS NULL OR p.ngay <= :endDate) AND " +
+            "(:ca IS NULL OR p.ca = :ca) AND " +
+            "(:maSinhVien IS NULL OR :maSinhVien = '' OR LOWER(p.maSinhVien) LIKE LOWER(CONCAT('%', :maSinhVien, '%'))) AND " +
+            "(:phongHocListEmpty = true OR p.phongHoc IN :phongHocList) AND " +
+            "(:maPhongBanListEmpty = true OR p.maPhongBan IN :maPhongBanList) AND " +
+            "(:tinhTrang IS NULL OR p.tinhTrangDiemDanh = :tinhTrang) AND " +
+            "(:trangThaiHoc IS NULL OR p.trangThai = :trangThaiHoc)")
+    Page<PhieuDiemDanh> findByAdvancedFiltersPaged(@Param("startDate") LocalDate startDate,
+                                                   @Param("endDate") LocalDate endDate,
+                                                   @Param("ca") Integer ca,
+                                                   @Param("maSinhVien") String maSinhVien,
+                                                   @Param("phongHocList") List<String> phongHocList,
+                                                   @Param("phongHocListEmpty") boolean phongHocListEmpty,
+                                                   @Param("maPhongBanList") List<String> maPhongBanList,
+                                                   @Param("maPhongBanListEmpty") boolean maPhongBanListEmpty,
+                                                   @Param("tinhTrang") PhieuDiemDanh.TrangThai tinhTrang,
+                                                   @Param("trangThaiHoc") PhieuDiemDanh.TrangThaiHoc trangThaiHoc,
+                                                   Pageable pageable);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE " +
+            "(:startDate IS NULL OR p.ngay >= :startDate) AND " +
+            "(:endDate IS NULL OR p.ngay <= :endDate) AND " +
+            "(:ca IS NULL OR p.ca = :ca) AND " +
+            "(:maSinhVien IS NULL OR :maSinhVien = '' OR LOWER(p.maSinhVien) LIKE LOWER(CONCAT('%', :maSinhVien, '%'))) AND " +
+            "(:phongHocListEmpty = true OR p.phongHoc IN :phongHocList) AND " +
+            "(:maPhongBanListEmpty = true OR p.maPhongBan IN :maPhongBanList) AND " +
+            "(:tinhTrang IS NULL OR p.tinhTrangDiemDanh = :tinhTrang) AND " +
+            "(:trangThaiHoc IS NULL OR p.trangThai = :trangThaiHoc) " +
+            "ORDER BY p.maPhongBan ASC, p.maSinhVien ASC, p.ngay ASC, p.ca ASC, p.gioVao ASC")
+    List<PhieuDiemDanh> findByAdvancedFilters(@Param("startDate") LocalDate startDate,
+                                              @Param("endDate") LocalDate endDate,
+                                              @Param("ca") Integer ca,
+                                              @Param("maSinhVien") String maSinhVien,
+                                              @Param("phongHocList") List<String> phongHocList,
+                                              @Param("phongHocListEmpty") boolean phongHocListEmpty,
+                                              @Param("maPhongBanList") List<String> maPhongBanList,
+                                              @Param("maPhongBanListEmpty") boolean maPhongBanListEmpty,
+                                              @Param("tinhTrang") PhieuDiemDanh.TrangThai tinhTrang,
+                                              @Param("trangThaiHoc") PhieuDiemDanh.TrangThaiHoc trangThaiHoc);
+
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.transaction.annotation.Transactional
-    @Query("UPDATE PhieuDiemDanh p SET p.rfid = :newRfid, p.maSinhVien = :maSinhVien, p.tenSinhVien = :tenSinhVien WHERE p.rfid = :oldRfid")
+    @Query("UPDATE PhieuDiemDanh p SET p.rfid = :newRfid, p.maSinhVien = :maSinhVien, p.tenSinhVien = :tenSinhVien, p.maPhongBan = :maPhongBan WHERE p.rfid = :oldRfid")
     int updateStudentInfoByRfid(@Param("oldRfid") String oldRfid,
                                 @Param("newRfid") String newRfid,
                                 @Param("maSinhVien") String maSinhVien,
-                                @Param("tenSinhVien") String tenSinhVien);
+                                @Param("tenSinhVien") String tenSinhVien,
+                                @Param("maPhongBan") String maPhongBan);
 
     @org.springframework.transaction.annotation.Transactional
     void deleteByRfid(String rfid);

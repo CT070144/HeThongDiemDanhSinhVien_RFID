@@ -27,6 +27,8 @@ public interface SinhVienRepository extends JpaRepository<SinhVien, String> {
     boolean existsByRfid(String rfid);
     
     boolean existsByMaSinhVien(String maSinhVien);
+
+    boolean existsByMaPhongBan(String maPhongBan);
     
     List<SinhVien> findByMaSinhVienIn(List<String> maSinhViens);
 }
