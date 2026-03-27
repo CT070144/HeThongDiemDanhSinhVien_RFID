@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rfid.attendance.entity.DocRfid;
 import com.rfid.attendance.entity.PhieuDiemDanh;
+import com.rfid.attendance.service.PythonFaceEncodingService;
 import com.rfid.attendance.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.data.domain.Page;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.text.Normalizer;
 import java.time.LocalDate;
@@ -28,6 +30,9 @@ public class AttendanceController {
     
     @Autowired
     private AttendanceService attendanceService;
+
+    @Autowired
+    private PythonFaceEncodingService pythonFaceEncodingService;
     @Autowired
     ObjectMapper objectMapper;
     @Autowired
@@ -80,11 +85,12 @@ public class AttendanceController {
             @RequestParam(required = false) String phongHoc,
             @RequestParam(required = false) String tinhTrang,
             @RequestParam(required = false) String trangThai,
-            @RequestParam(required = false) String maPhongBan
+            @RequestParam(required = false) String maPhongBan,
+            @RequestParam(defaultValue = "DESC") String sortDir
     ) {
         try {
             Page<PhieuDiemDanh> result = attendanceService.getAttendanceByAdvancedFiltersPaged(
-                    startDate, endDate, ca, maSinhVien, phongHoc, maPhongBan, tinhTrang, trangThai, page, size
+                    startDate, endDate, ca, maSinhVien, phongHoc, maPhongBan, tinhTrang, trangThai, sortDir, page, size
             );
             return ResponseEntity.ok(Map.of(
                     "content", result.getContent(),
@@ -157,7 +163,7 @@ public class AttendanceController {
         }
     }
     
-    @PostMapping("/rfid")
+    @PostMapping(value = "/rfid", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> processRfidAttendance(@RequestBody RfidRequest request) {
         try {
             System.out.println(request.getRfid());
@@ -173,6 +179,145 @@ public class AttendanceController {
         } catch (RuntimeException e) {
             System.out.println(e.getMessage());
             return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Multipart version để ESP32 đẩy kèm ảnh.
+     * - Nếu có ảnh: check cả RFID + face (so khớp với SinhVien.faceid) rồi mới chấm công.
+     * - Nếu không có ảnh: chỉ chấm công theo RFID như cũ.
+     */
+    @PostMapping(value = "/rfid", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> processRfidAttendanceWithOptionalFace(
+            @RequestParam("rfid") String rfid,
+            @RequestParam(required = false) String maThietBi,
+            @RequestParam(required = false, value = "image") MultipartFile image,
+            @RequestParam(required = false, value = "file") MultipartFile file,
+            @RequestAttribute(value = "deviceId", required = false) String deviceId
+    ) {
+        System.out.println(rfid+"input");
+        try {
+            String rfidTrim = rfid != null ? rfid.trim() : "";
+            if (rfidTrim.isEmpty()) {
+                return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
+            }
+
+            String deviceIdFinal = (maThietBi != null && !maThietBi.isBlank()) ? maThietBi.trim() : deviceId;
+
+            MultipartFile inputImage = (image != null && !image.isEmpty()) ? image : file;
+
+            // Nếu ESP32 gửi ảnh => verify face + rfid.
+            if (inputImage != null && !inputImage.isEmpty()) {
+                System.out.println(rfidTrim);
+                var svOpt = attendanceService.getSinhVienRepository().findByRfid(rfidTrim);
+
+                System.out.println(svOpt+"kết quả");
+                if (svOpt.isEmpty()) {
+                    return ResponseEntity.ok(new RfidResponse("not_found rfid", ""));
+                }
+
+                var sv = svOpt.get();
+                String faceid = sv.getFaceid();
+                if (faceid == null || faceid.isBlank()) {
+                    return ResponseEntity.ok(new RfidResponse("faceid_not_found", ""));
+                }
+
+                var compare = pythonFaceEncodingService.compareFace(inputImage, faceid);
+                if (compare == null || !compare.isMatched()) {
+                    String payloadToSend = rfidTrim;
+                    try {
+                        payloadToSend = objectMapper.writeValueAsString(rfidTrim);
+                    } catch (JsonProcessingException ex) {
+                        // fallback: gửi thẳng chuỗi
+                    }
+                    final String payloadFinal = payloadToSend;
+                    socketIOServer.getAllClients().forEach(client -> client.sendEvent("invalid-face", payloadFinal));
+                    return ResponseEntity.ok(new RfidResponse("face_mismatch", ""));
+                }
+            }
+
+            // Nếu verified (hoặc không gửi ảnh) => chấm công theo logic hiện có của RFID.
+            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(rfidTrim, deviceIdFinal);
+            if (attendance.getRfid() == null) {
+                return ResponseEntity.ok(new RfidResponse("not_found", ""));
+            }
+
+            // Nếu ESP32 gửi ảnh => lưu ảnh chụp điểm danh vào phiếu.
+            if (inputImage != null && !inputImage.isEmpty()) {
+                attendance = attendanceService.attachAttendancePhoto(attendance, inputImage);
+            }
+
+            attendance.setTenSinhVien(removeAccent(attendance.getTenSinhVien()));
+            return ResponseEntity.ok(new RfidResponse("found", attendance.getTenSinhVien()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping(value = "/face", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<?> processFaceAttendance(
+            @RequestParam("uid") String uid,
+            @RequestParam("image") MultipartFile image,
+            @RequestParam(required = false) String maThietBi,
+            @RequestAttribute(value = "deviceId", required = false) String deviceId
+    ) {
+        try {
+            String uidTrim = uid != null ? uid.trim() : "";
+            if (uidTrim.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Thiếu UID"));
+            }
+            if (image == null || image.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("error", "Thiếu file ảnh khuôn mặt"));
+            }
+
+            String deviceIdFinal = (maThietBi != null && !maThietBi.isBlank()) ? maThietBi.trim() : deviceId;
+
+            // Step 1: kiểm tra UID có tồn tại hay không để tránh tốn tài nguyên AI
+            var svOpt = attendanceService.getSinhVienRepository().findByRfid(uidTrim);
+            if (svOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Không tìm thấy nhân viên cho UID"));
+            }
+
+            var sv = svOpt.get();
+            String faceid = sv.getFaceid();
+            if (faceid == null || faceid.isBlank()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Chưa có faceid cho mã sinh viên"));
+            }
+
+            // So sánh ảnh với template embedding (faceid) bằng Python /compare
+            var compare = pythonFaceEncodingService.compareFace(image, faceid);
+            if (compare == null || !compare.isMatched()) {
+                // Inform UI (nếu bạn muốn hiển thị toast khi sai mặt)
+                String payloadToSend = uidTrim;
+                try {
+                    payloadToSend = objectMapper.writeValueAsString(uidTrim);
+                } catch (JsonProcessingException ex) {
+                    // fallback: gửi thẳng chuỗi
+                }
+                final String payloadFinal = payloadToSend;
+                socketIOServer.getAllClients().forEach(client -> client.sendEvent("invalid-face", payloadFinal));
+                return ResponseEntity.ok(new FaceResponse("failed", ""));
+            }
+
+            // Nếu success thì chấm công theo logic hiện có của RFID (re-use time/shift splitting)
+            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(uidTrim, deviceIdFinal);
+            if (attendance.getRfid() == null) {
+                return ResponseEntity.ok(new FaceResponse("not_found", ""));
+            }
+
+            // Lưu ảnh chụp điểm danh cho phiếu vừa tạo/cập nhật
+            attendance = attendanceService.attachAttendancePhoto(attendance, image);
+
+            attendance.setTenSinhVien(removeAccent(attendance.getTenSinhVien()));
+            return ResponseEntity.ok(new FaceResponse("success", attendance.getTenSinhVien()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest().body(new FaceResponse("not_found", ""));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
@@ -293,6 +438,21 @@ public class AttendanceController {
                 ));
         }
     }
+
+    /**
+     * Xem chi tiết phiếu điểm danh, bao gồm ảnh chụp (nếu có) dưới dạng dataUrl.
+     */
+    @GetMapping("/detail/{id}")
+    public ResponseEntity<?> getAttendanceDetail(@PathVariable Long id) {
+        try {
+            System.out.println(attendanceService.getAttendanceDetail(id));
+            return ResponseEntity.ok(attendanceService.getAttendanceDetail(id));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Lỗi khi lấy chi tiết phiếu điểm danh"));
+        }
+    }
     
     // Inner class for request body
     public static class RfidRequest {
@@ -319,7 +479,21 @@ public class AttendanceController {
         public String getStatus() { return status; }
         public String getName() { return name; }
     }
+
+    public static class FaceResponse {
+        private String status;
+        private String name;
+        public FaceResponse(String status, String name) {
+            this.status = status;
+            this.name = name;
+        }
+        public String getStatus() { return status; }
+        public String getName() { return name; }
+    }
     public static String removeAccent(String input) {
+        if (input == null) {
+            return "";
+        }
         // B1: Chuẩn hóa chuỗi thành dạng decomposed (chữ + dấu tách riêng)
         String normalized = Normalizer.normalize(input, Normalizer.Form.NFD);
 

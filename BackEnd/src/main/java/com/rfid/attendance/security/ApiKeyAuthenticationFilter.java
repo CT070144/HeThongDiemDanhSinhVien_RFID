@@ -55,8 +55,10 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
                 
                 // Lưu mã thiết bị vào request attribute để sử dụng sau này
                 request.setAttribute("deviceId", apiKeyEntity.getMaThietBi());
+                System.out.println("heheheh");
             } else {
                 // API key không hợp lệ
+                System.out.println("notvalid");
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType("application/json");
                 response.getWriter().write("{\"error\":\"Invalid or expired API key\"}");

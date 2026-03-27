@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -45,9 +46,15 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Allow CORS preflight requests
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         // Endpoint /rfid yêu cầu API key hoặc JWT token
                         .requestMatchers("/api/attendance/rfid").hasAnyRole("ESP32_DEVICE", "USER")
+                        // Endpoint /face yêu cầu API key hoặc JWT token
+                        .requestMatchers("/api/attendance/face").hasAnyRole("ESP32_DEVICE", "USER")
+                        // Endpoint hiển thị chi tiết phiếu điểm danh (ảnh chụp)
+                        .requestMatchers("/api/attendance/detail/**").permitAll()
                         .requestMatchers("/api/attendance/debug/**").permitAll()
                         .requestMatchers("/api/apikey/**").authenticated() // Quản lý API key cần authentication
                         .requestMatchers("/socket.io/**").permitAll()
@@ -73,7 +80,7 @@ public class SecurityConfig {
 
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-auth-token", "X-API-Key"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "x-auth-token", "X-API-Key", "x-api-key"));
         configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

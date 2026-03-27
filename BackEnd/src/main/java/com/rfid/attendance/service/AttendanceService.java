@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.Base64;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 @Transactional
@@ -75,6 +77,75 @@ public class AttendanceService {
     ObjectMapper objectMapper;
     @Autowired
     private SocketIOServer socketIOServer;
+
+    @Autowired
+    private AttendancePhotoStorageService attendancePhotoStorageService;
+
+    /**
+     * Gắn ảnh chụp điểm danh cho phiếu vừa được tạo/cập nhật.
+     */
+    @Transactional
+    public PhieuDiemDanh attachAttendancePhoto(PhieuDiemDanh attendance, MultipartFile image) {
+        if (attendance == null || attendance.getId() == null) {
+            return attendance;
+        }
+        if (image == null || image.isEmpty()) {
+            return attendance;
+        }
+        try {
+            String pathFile = attendancePhotoStorageService.storePhoto(attendance.getId(), image);
+            if (pathFile == null || pathFile.isBlank()) {
+                return attendance;
+            }
+            attendance.setPathFile(pathFile);
+            return phieuDiemDanhRepository.save(attendance);
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi lưu ảnh chụp điểm danh", e);
+        }
+    }
+
+    public AttendanceDetailResponse getAttendanceDetail(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("Thiếu id phiếu điểm danh");
+        }
+
+        PhieuDiemDanh attendance = phieuDiemDanhRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy phiếu điểm danh id=" + id));
+
+        String photoDataUrl = null;
+        if (attendance.getPathFile() != null && !attendance.getPathFile().isBlank()) {
+            try {
+                byte[] bytes = attendancePhotoStorageService.loadPhoto(attendance.getPathFile());
+                if (bytes != null) {
+                    String contentType = attendancePhotoStorageService.detectContentType(attendance.getPathFile());
+                    String base64 = Base64.getEncoder().encodeToString(bytes);
+                    photoDataUrl = "data:" + contentType + ";base64," + base64;
+                }
+            } catch (Exception ignored) {
+                // Nếu đọc ảnh lỗi thì trả chi tiết không có ảnh.
+            }
+        }
+
+        return new AttendanceDetailResponse(attendance, photoDataUrl);
+    }
+
+    public static class AttendanceDetailResponse {
+        private final PhieuDiemDanh attendance;
+        private final String photoDataUrl;
+
+        public AttendanceDetailResponse(PhieuDiemDanh attendance, String photoDataUrl) {
+            this.attendance = attendance;
+            this.photoDataUrl = photoDataUrl;
+        }
+
+        public PhieuDiemDanh getAttendance() {
+            return attendance;
+        }
+
+        public String getPhotoDataUrl() {
+            return photoDataUrl;
+        }
+    }
     
     public List<PhieuDiemDanh> getAllAttendance() {
         return phieuDiemDanhRepository.findAll();
@@ -105,6 +176,7 @@ public class AttendanceService {
             String maPhongBan,
             String tinhTrang,
             String trangThai,
+            String sortDir,
             int page,
             int size
     ) {
@@ -117,6 +189,15 @@ public class AttendanceService {
         PhieuDiemDanh.TrangThai tinhTrangEnum = parseTinhTrang(tinhTrang);
         PhieuDiemDanh.TrangThaiHoc trangThaiHocEnum = parseTrangThaiHoc(trangThai);
 
+        String normalizedSortDir = normalizeString(sortDir);
+        if (normalizedSortDir == null) {
+            normalizedSortDir = "DESC";
+        }
+        String upperSort = normalizedSortDir.toUpperCase();
+        if (!"ASC".equals(upperSort) && !"DESC".equals(upperSort)) {
+            throw new IllegalArgumentException("Giá trị sortDir không hợp lệ (ASC|DESC): " + sortDir);
+        }
+
         return phieuDiemDanhRepository.findByAdvancedFiltersPaged(
                 startDate,
                 endDate,
@@ -128,6 +209,7 @@ public class AttendanceService {
                 maPhongBanList.isEmpty(),
                 tinhTrangEnum,
                 trangThaiHocEnum,
+                upperSort,
                 pageable
         );
     }
@@ -602,6 +684,184 @@ public class AttendanceService {
         });
         return record;
     }
+
+    /**
+     * Chấm công khuôn mặt dựa trên mã sinh viên do Python nhận diện trả về.
+     * Luồng nghiệp vụ tương tự RFID: nếu có bản ghi "mở" (gioRa == null) thì coi là check-out,
+     * nếu không thì tạo bản ghi mới (check-in).
+     */
+    public PhieuDiemDanh processFaceAttendanceWithDevice(String maSinhVien, String maThietBi) {
+        if (maSinhVien == null || maSinhVien.trim().isEmpty()) {
+            PhieuDiemDanh response = new PhieuDiemDanh();
+            // publish invalid-face event
+            socketIOServer.getAllClients().forEach(client -> {
+                String message = null;
+                try {
+                    message = objectMapper.writeValueAsString("");
+                } catch (JsonProcessingException e) {
+                    System.out.println("error convert face payload to JSON");
+                }
+                client.sendEvent("invalid-face", message);
+            });
+            return response;
+        }
+
+        String normalizedMaSinhVien = maSinhVien.trim();
+
+        Optional<SinhVien> sinhVienOpt = sinhVienRepository.findByMaSinhVien(normalizedMaSinhVien);
+        if (!sinhVienOpt.isPresent()) {
+            PhieuDiemDanh response = new PhieuDiemDanh();
+            // publish invalid-face event
+            socketIOServer.getAllClients().forEach(client -> {
+                String message = null;
+                try {
+                    message = objectMapper.writeValueAsString(
+                            java.util.Map.of(
+                                    "maSinhVien", normalizedMaSinhVien
+                            )
+                    );
+                } catch (JsonProcessingException e) {
+                    System.out.println("error convert face payload to JSON");
+                }
+                client.sendEvent("invalid-face", message);
+            });
+            return response;
+        }
+
+        SinhVien sinhVien = sinhVienOpt.get();
+
+        LocalDate today = LocalDate.now(APP_ZONE_ID);
+        LocalTime currentTime = LocalTime.now(APP_ZONE_ID);
+        Integer currentCa = getCurrentCa();
+
+        // Ưu tiên xử lý bản ghi "mở" (đã check-in nhưng chưa check-out), kể cả khác ngày/khác ca.
+        List<PhieuDiemDanh> openRecords = findOpenRecordsForMaSinhVien(normalizedMaSinhVien);
+        if (openRecords != null && !openRecords.isEmpty()) {
+            PhieuDiemDanh result = splitAttendanceAcrossShifts(openRecords, sinhVien, today, currentTime, currentCa);
+
+            if (maThietBi != null && !maThietBi.isEmpty() && result.getCa() != -99) {
+                Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
+                tb.ifPresent(thietBi -> {
+                    result.setPhongHoc(thietBi.getPhongHoc());
+                    phieuDiemDanhRepository.save(result);
+                });
+            }
+
+            // publish event
+            socketIOServer.getAllClients().forEach(client -> {
+                String message = null;
+                try {
+                    message = objectMapper.writeValueAsString(result);
+                } catch (JsonProcessingException e) {
+                    System.out.println("error convert object");
+                }
+                client.sendEvent("update-attendance", message);
+            });
+
+            return result;
+        }
+
+        if (currentCa == 0) {
+            System.out.println("Ngoài giờ học (face)");
+            throw new RuntimeException("Ngoài giờ học");
+        }
+
+        // Tránh trường hợp đã điểm danh/đã ra về rồi mà ESP32 bấm lại.
+        List<PhieuDiemDanh> sameShiftRecords =
+                phieuDiemDanhRepository.findByMaSinhVienAndNgayAndCaOrderByCreatedAtDesc(
+                        normalizedMaSinhVien, today, currentCa
+                );
+
+        if (sameShiftRecords != null && !sameShiftRecords.isEmpty()) {
+            PhieuDiemDanh record = sameShiftRecords.get(0);
+            if (record.getGioRa() == null) {
+                // check-out trong ca hiện tại (về mặt lý thuyết không cần vì openRecords đã xử lý, nhưng giữ an toàn)
+                record.setGioRa(currentTime);
+                if (record.getMaPhongBan() == null || record.getMaPhongBan().isBlank()) {
+                    record.setMaPhongBan(sinhVien.getMaPhongBan());
+                }
+
+                PhieuDiemDanh.TrangThaiHoc trangThai = determineCheckoutStatus(currentTime, currentCa);
+                record.setTrangThai(trangThai);
+                PhieuDiemDanh saved = phieuDiemDanhRepository.save(record);
+
+                if (maThietBi != null && !maThietBi.isEmpty() && saved.getCa() != -99) {
+                    Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
+                    tb.ifPresent(thietBi -> {
+                        saved.setPhongHoc(thietBi.getPhongHoc());
+                        phieuDiemDanhRepository.save(saved);
+                    });
+                }
+
+                socketIOServer.getAllClients().forEach(client -> {
+                    String message = null;
+                    try {
+                        message = objectMapper.writeValueAsString(saved);
+                    } catch (JsonProcessingException e) {
+                        System.out.println("error convert object");
+                    }
+                    client.sendEvent("update-attendance", message);
+                });
+
+                return saved;
+            } else {
+                // Sinh viên đã điểm danh ra trong ca này
+                PhieuDiemDanh response = new PhieuDiemDanh();
+                response.setRfid(record.getRfid());
+                response.setTenSinhVien(record.getTenSinhVien());
+                response.setCa(-99);
+
+                socketIOServer.getAllClients().forEach(client -> {
+                    String message = null;
+                    try {
+                        message = objectMapper.writeValueAsString(response);
+                    } catch (JsonProcessingException e) {
+                        System.out.println("error convert object");
+                    }
+                    client.sendEvent("update-attendance", message);
+                });
+
+                return response;
+            }
+        }
+
+        // Tạo bản ghi mới (check-in)
+        PhieuDiemDanh.TrangThai tinhTrangDiemDanh = determineAttendanceStatus(currentTime, currentCa);
+        String faceSyntheticRfid = "FACE:" + sinhVien.getMaSinhVien();
+
+        PhieuDiemDanh newRecord = new PhieuDiemDanh();
+        newRecord.setRfid(faceSyntheticRfid);
+        newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
+        newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
+        newRecord.setMaPhongBan(sinhVien.getMaPhongBan());
+        newRecord.setGioVao(currentTime);
+        newRecord.setNgay(today);
+        newRecord.setCa(currentCa);
+        newRecord.setTinhTrangDiemDanh(tinhTrangDiemDanh);
+        newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
+
+        PhieuDiemDanh result = phieuDiemDanhRepository.save(newRecord);
+
+        if (maThietBi != null && !maThietBi.isEmpty() && result.getCa() != -99) {
+            Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
+            tb.ifPresent(thietBi -> {
+                result.setPhongHoc(thietBi.getPhongHoc());
+                phieuDiemDanhRepository.save(result);
+            });
+        }
+
+        socketIOServer.getAllClients().forEach(client -> {
+            String message = null;
+            try {
+                message = objectMapper.writeValueAsString(result);
+            } catch (JsonProcessingException e) {
+                System.out.println("error convert object");
+            }
+            client.sendEvent("update-attendance", message);
+        });
+
+        return result;
+    }
     
     private Integer getCurrentCa() {
         LocalTime now = LocalTime.now(APP_ZONE_ID);
@@ -714,6 +974,15 @@ public class AttendanceService {
             return List.of();
         }
         return phieuDiemDanhRepository.findByRfid(rfid).stream()
+                .filter(r -> r != null && r.getGioRa() == null)
+                .collect(Collectors.toList());
+    }
+
+    private List<PhieuDiemDanh> findOpenRecordsForMaSinhVien(String maSinhVien) {
+        if (maSinhVien == null || maSinhVien.isBlank()) {
+            return List.of();
+        }
+        return phieuDiemDanhRepository.findByMaSinhVien(maSinhVien).stream()
                 .filter(r -> r != null && r.getGioRa() == null)
                 .collect(Collectors.toList());
     }

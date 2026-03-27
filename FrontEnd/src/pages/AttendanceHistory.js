@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal } from 'react-bootstrap';
+import { Container, Row, Col, Card, Table, Form, Button, Alert, Badge, Modal, Spinner } from 'react-bootstrap';
 import { attendanceAPI, caLamAPI, roomAPI, phongBanAPI } from '../services/api';
+import api from '../services/api';
 import { useNotification } from '../contexts/NotificationContext';
 import io  from "socket.io-client";
 import { formatTime } from '../services/format-time';
-import { FaFilter, FaTimes, FaCalendarAlt, FaClock, FaIdCard, FaDoorOpen, FaHistory, FaFileExport, FaChartBar, FaCheckCircle, FaExclamationTriangle, FaClock as FaClockIcon, FaInfoCircle, FaSignOutAlt } from 'react-icons/fa';
+import { FaFilter,FaArrowUp, FaArrowDown, FaTimes, FaCalendarAlt, FaClock, FaIdCard, FaDoorOpen, FaHistory, FaFileExport, FaChartBar, FaCheckCircle, FaExclamationTriangle, FaClock as FaClockIcon, FaInfoCircle, FaSignOutAlt } from 'react-icons/fa';
 
 
 const AttendanceHistory = () => {
@@ -31,7 +32,8 @@ const AttendanceHistory = () => {
     phongHoc: [],
     tinhTrang: '',
     trangThai: '',
-    maPhongBan: ''
+    maPhongBan: '',
+    sortDir: 'DESC' // DESC: ngày mới nhất -> cũ nhất
   });
   const [showPhongHocModal, setShowPhongHocModal] = useState(false);
   const [showPhongBanModal, setShowPhongBanModal] = useState(false);
@@ -40,6 +42,10 @@ const AttendanceHistory = () => {
   const [phongHocOptions, setPhongHocOptions] = useState([]);
   const [phongBanOptions, setPhongBanOptions] = useState([]);
   const [caLams, setCaLams] = useState([]);
+
+  const [showAttendanceDetailModal, setShowAttendanceDetailModal] = useState(false);
+  const [attendanceDetail, setAttendanceDetail] = useState(null);
+  const [attendanceDetailLoading, setAttendanceDetailLoading] = useState(false);
 
   useEffect(() => {
     loadAttendance();
@@ -157,7 +163,8 @@ const AttendanceHistory = () => {
         phongHoc: (filters.phongHoc || []).join(','),
         tinhTrang: filters.tinhTrang,
         trangThai: filters.trangThai,
-        maPhongBan: filters.maPhongBan
+        maPhongBan: filters.maPhongBan,
+        sortDir: filters.sortDir
       });
       const content = response?.data?.content || [];
       setAttendance(content);
@@ -168,6 +175,25 @@ const AttendanceHistory = () => {
       notify.error('Lỗi khi tải lịch sử chấm công');
     }
   }, [filters, notify, page, pageSize]);
+
+  const handleViewAttendanceDetail = async (record) => {
+    if (!record || !record.id) return;
+    setAttendanceDetailLoading(true);
+    setAttendanceDetail(null);
+    try {
+      const resp = typeof attendanceAPI?.getAttendanceDetail === 'function'
+        ? await attendanceAPI.getAttendanceDetail(record.id)
+        : await api.get(`/attendance/detail/${record.id}`);
+      setAttendanceDetail(resp.data || null);
+      setShowAttendanceDetailModal(true);
+      console.log(resp.data);
+      
+    } catch (error) {
+      console.error('Error loading attendance detail:', error);
+    } finally {
+      setAttendanceDetailLoading(false);
+    }
+  };
 
   useEffect(() => {
     loadAttendance();
@@ -185,7 +211,8 @@ const AttendanceHistory = () => {
         phongHoc: (filters.phongHoc || []).join(','),
         tinhTrang: filters.tinhTrang,
         trangThai: filters.trangThai,
-        maPhongBan: filters.maPhongBan
+        maPhongBan: filters.maPhongBan,
+        sortDir: filters.sortDir
       });
       const allFiltered = response?.data?.content || [];
       setAllFilteredAttendance(allFiltered);
@@ -219,7 +246,8 @@ const AttendanceHistory = () => {
       phongHoc: [],
       tinhTrang: '',
       trangThai: '',
-      maPhongBan: ''
+      maPhongBan: '',
+      sortDir: 'DESC'
     });
     setPage(1);
   };
@@ -231,8 +259,17 @@ const AttendanceHistory = () => {
     (filters.phongHoc && filters.phongHoc.length > 0) ||
     filters.tinhTrang ||
     filters.trangThai ||
-    filters.maPhongBan
+    filters.maPhongBan ||
+    (filters.sortDir && filters.sortDir !== 'DESC')
   );
+
+  const toggleSortDate = () => {
+    setPage(1);
+    setFilters((prev) => ({
+      ...prev,
+      sortDir: prev.sortDir === 'ASC' ? 'DESC' : 'ASC'
+    }));
+  };
 
   const togglePhongHoc = (roomCode) => {
     setPage(1);
@@ -343,10 +380,16 @@ const AttendanceHistory = () => {
                 <FaHistory className="me-2" />
                 Lịch sử chấm công
               </h3>
-              <Button variant="light" onClick={exportExcel} className="shadow-sm">
-                <FaFileExport className="me-2" />
-                Xuất Excel
-              </Button>
+              <div className="d-flex gap-2">
+                <Button variant="outline-light" onClick={toggleSortDate} className="shadow-sm">
+                  <FaCalendarAlt className="me-2" />
+                  Sắp xếp thời gian {filters.sortDir === 'ASC' ? <FaArrowUp></FaArrowUp>: <FaArrowDown></FaArrowDown>}
+                </Button>
+                <Button variant="light" onClick={exportExcel} className="shadow-sm">
+                  <FaFileExport className="me-2" />
+                  Xuất Excel
+                </Button>
+              </div>
             </Card.Header>
             <Card.Body className="p-4">
               {/* Bộ lọc */}
@@ -618,6 +661,7 @@ const AttendanceHistory = () => {
                       <th style={{ fontWeight: '600' }}>Giờ ra</th>
                       <th style={{ fontWeight: '600' }}>Tình trạng chấm công</th>
                       <th style={{ fontWeight: '600' }}>Trạng thái</th>
+                      <th style={{ fontWeight: '600' }}>Chi tiết</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -645,6 +689,15 @@ const AttendanceHistory = () => {
                         <td>{formatTime(record.gioRa) || <span className="text-muted">-</span>}</td>
                         <td>{getStatusBadge(record.tinhTrangDiemDanh)}</td>
                         <td>{getAttendanceStatusBadge(record.trangThai)}</td>
+                        <td>
+                          <Button
+                            variant="outline-primary"
+                            size="sm"
+                            onClick={() => handleViewAttendanceDetail(record)}
+                          >
+                            Xem chi tiết
+                          </Button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -703,6 +756,80 @@ const AttendanceHistory = () => {
           </Card>
         </Col>
       </Row>
+
+      <Modal
+        show={showAttendanceDetailModal}
+        onHide={() => setShowAttendanceDetailModal(false)}
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
+          <Modal.Title>Chi tiết phiếu điểm danh</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {attendanceDetailLoading ? (
+            <div className="d-flex align-items-center gap-2">
+              <Spinner animation="border" size="sm" />
+              Đang tải...
+            </div>
+          ) : !attendanceDetail?.attendance ? (
+            <div className="text-muted">Không có dữ liệu.</div>
+          ) : (
+            <div className="d-flex gap-4">
+              <div style={{ width: 170 }}>
+                {attendanceDetail.photoDataUrl ? (
+                  <img
+                    src={attendanceDetail.photoDataUrl}
+                    alt="Ảnh điểm danh"
+                    style={{
+                      width: 160,
+                      height: 200,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid #dee2e6'
+                    }}
+                  />
+                ) : (
+                  <div
+                    className="text-muted small"
+                    style={{
+                      width: 160,
+                      height: 200,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: '1px dashed #dee2e6',
+                      borderRadius: 8
+                    }}
+                  >
+                    Không có ảnh
+                  </div>
+                )}
+              </div>
+
+              <div style={{ flex: 1 }}>
+                <div><strong>ID:</strong> {attendanceDetail.attendance.id}</div>
+                <div><strong>RFID:</strong> {attendanceDetail.attendance.rfid}</div>
+                <div><strong>Mã SV:</strong> {attendanceDetail.attendance.maSinhVien}</div>
+                <div><strong>Tên SV:</strong> {attendanceDetail.attendance.tenSinhVien}</div>
+                <div><strong>Bộ phận:</strong> {attendanceDetail.attendance.maPhongBan || '-'}</div>
+                <div><strong>Vị trí:</strong> {attendanceDetail.attendance.phongHoc || '-'}</div>
+                <div><strong>Ngày:</strong> {attendanceDetail.attendance.ngay ? new Date(attendanceDetail.attendance.ngay).toLocaleDateString('vi-VN') : '-'}</div>
+                <div><strong>Ca:</strong> {getCaName(attendanceDetail.attendance.ca)}</div>
+                <div><strong>Giờ vào:</strong> {formatTime(attendanceDetail.attendance.gioVao) || '-'}</div>
+                <div><strong>Giờ ra:</strong> {formatTime(attendanceDetail.attendance.gioRa) || '-'}</div>
+                <div><strong>Tình trạng:</strong> {getStatusBadge(attendanceDetail.attendance.tinhTrangDiemDanh)}</div>
+                <div><strong>Trạng thái:</strong> {getAttendanceStatusBadge(attendanceDetail.attendance.trangThai)}</div>
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowAttendanceDetailModal(false)}>
+            Đóng
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       <Modal show={showPhongHocModal} onHide={() => setShowPhongHocModal(false)} centered>
         <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>

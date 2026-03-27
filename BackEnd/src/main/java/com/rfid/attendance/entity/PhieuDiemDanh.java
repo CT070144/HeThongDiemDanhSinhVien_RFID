@@ -61,6 +61,11 @@ public class PhieuDiemDanh {
     
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
+
+    // Link/path tới file ảnh chụp điểm danh (được lưu khi ESP32 gửi ảnh).
+    // Ví dụ: uploads/attendance/123/uuid.jpg
+    @Column(name = "path_file", length = 500)
+    private String pathFile;
     
     public enum TrangThai {
         DUNG_GIO("dung_gio", "Điểm danh đúng giờ"),
@@ -236,5 +241,13 @@ public class PhieuDiemDanh {
     
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public String getPathFile() {
+        return pathFile;
+    }
+
+    public void setPathFile(String pathFile) {
+        this.pathFile = pathFile;
     }
 }

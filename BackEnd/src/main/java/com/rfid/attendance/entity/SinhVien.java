@@ -26,6 +26,17 @@ public class SinhVien {
 
     @Column(name = "maphongban", length = 50)
     private String maPhongBan;
+
+    // Lưu vector embedding của khuôn mặt dạng JSON TEXT (vd: [0.12, -0.33, ...])
+    // dùng cho API /compare của Python.
+    @Lob
+    @Column(name = "faceid", columnDefinition = "TEXT")
+    private String faceid;
+
+    // Lưu đường dẫn tương đối (relative path) tới ảnh avatar trên server.
+    // Ví dụ: uploads/avatars/CT070201/uuid.jpg
+    @Column(name = "path_avatar", length = 500)
+    private String pathAvatar;
     
     @Column(name = "created_at")
     private LocalDateTime createdAt;
@@ -84,6 +95,22 @@ public class SinhVien {
 
     public void setMaPhongBan(String maPhongBan) {
         this.maPhongBan = maPhongBan;
+    }
+
+    public String getFaceid() {
+        return faceid;
+    }
+
+    public void setFaceid(String faceid) {
+        this.faceid = faceid;
+    }
+
+    public String getPathAvatar() {
+        return pathAvatar;
+    }
+
+    public void setPathAvatar(String pathAvatar) {
+        this.pathAvatar = pathAvatar;
     }
     
     public LocalDateTime getCreatedAt() {

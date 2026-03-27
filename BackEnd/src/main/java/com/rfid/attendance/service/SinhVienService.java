@@ -23,6 +23,9 @@ public class SinhVienService {
     private DocRfidRepository docRfidRepository;
     @Autowired
     private PhieuDiemDanhRepository phieuDiemDanhRepository;
+
+    @Autowired
+    private SinhVienAvatarStorageService avatarStorageService;
     
     public List<SinhVien> getAllSinhVien() {
         return sinhVienRepository.findAll();
@@ -65,12 +68,32 @@ public class SinhVienService {
         
         // Lưu RFID cũ để sync với các bảng khác
         String oldRfid = sinhVien.getRfid();
+        String oldPathAvatar = sinhVien.getPathAvatar();
         
         sinhVien.setRfid(sinhVienDetails.getRfid());
         sinhVien.setTenSinhVien(sinhVienDetails.getTenSinhVien());
         sinhVien.setMaPhongBan(sinhVienDetails.getMaPhongBan());
+        if (sinhVienDetails.getFaceid() != null && !sinhVienDetails.getFaceid().isBlank()) {
+            sinhVien.setFaceid(sinhVienDetails.getFaceid());
+        }
+        if (sinhVienDetails.getPathAvatar() != null && !sinhVienDetails.getPathAvatar().isBlank()) {
+            sinhVien.setPathAvatar(sinhVienDetails.getPathAvatar());
+        }
         
         SinhVien saved = sinhVienRepository.save(sinhVien);
+
+        // Nếu avatar đã thay đổi thì xoá file cũ (best-effort).
+        if (oldPathAvatar != null
+                && sinhVienDetails.getPathAvatar() != null
+                && !sinhVienDetails.getPathAvatar().isBlank()
+                && !oldPathAvatar.equals(sinhVienDetails.getPathAvatar())) {
+            try {
+                avatarStorageService.deleteAvatar(oldPathAvatar);
+            } catch (Exception ignored) {
+                // Không fail request nếu không xoá được file cũ.
+            }
+        }
+
         if(!sinhVienDetails.getRfid().equals(oldRfid)){
         docRfidRepository.findByRfid(oldRfid).ifPresent(docRfid -> {
             docRfidRepository.delete(docRfid);
@@ -95,11 +118,20 @@ public class SinhVienService {
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy sinh viên với mã: " + maSinhVien));
         
         String rfid = sinhVien.getRfid();
+        String pathAvatar = sinhVien.getPathAvatar();
         
         // Delete related records
         sinhVienRepository.deleteById(maSinhVien);
         docRfidRepository.findByRfid(rfid).ifPresent(docRfidRepository::delete);
         phieuDiemDanhRepository.deleteByRfid(rfid);
+
+        // Xoá avatar file cũ (best-effort).
+        if (pathAvatar != null && !pathAvatar.isBlank()) {
+            try {
+                avatarStorageService.deleteAvatar(pathAvatar);
+            } catch (Exception ignored) {
+            }
+        }
     }
     
     public boolean existsByRfid(String rfid) {

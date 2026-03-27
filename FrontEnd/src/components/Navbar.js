@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useNotification } from '../contexts/NotificationContext';
 import logo from '../assets/logo.png';
-import { FaHome, FaUsers, FaGraduationCap, FaHistory, FaCog, FaUserCircle, FaSignOutAlt, FaBuilding } from 'react-icons/fa';
+import { FaHome, FaUsers, FaHistory, FaCog, FaUserCircle, FaSignOutAlt, FaCamera } from 'react-icons/fa';
 
 const CustomNavbar = () => {
   const { user, logout } = useAuth();
@@ -106,6 +106,8 @@ const CustomNavbar = () => {
                 <span style={{ fontSize: '20px' }}>Cài đặt</span>
               </Nav.Link>
             </LinkContainer>
+
+           
           </Nav>
           
           {/* User info and logout */}

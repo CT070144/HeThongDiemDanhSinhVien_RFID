@@ -44,6 +44,36 @@ export const studentAPI = {
   search: (keyword) => api.get(`/sinhvien/search?keyword=${keyword}`),
   create: (student) => api.post('/sinhvien', student),
   update: (rfid, student) => api.put(`/sinhvien/${rfid}`, student),
+  // Create/Update kèm upload ảnh mẫu => backend sẽ encode và lưu vào `faceid`
+  createWithFace: (student, files) => {
+    const formData = new FormData();
+    formData.append('maSinhVien', student.maSinhVien);
+    formData.append('rfid', student.rfid);
+    formData.append('tenSinhVien', student.tenSinhVien);
+    formData.append('maPhongBan', student.maPhongBan ?? '');
+    const list = Array.isArray(files) ? files : (files ? [files] : []);
+    list.forEach((f) => {
+      if (f) formData.append('files', f);
+    });
+    // avatar là tùy chọn, truyền thêm ở hàm wrapper bên dưới nếu cần.
+    return api.post('/sinhvien', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  updateWithFace: (maSinhVien, student, files) => {
+    const formData = new FormData();
+    formData.append('rfid', student.rfid);
+    formData.append('tenSinhVien', student.tenSinhVien);
+    formData.append('maPhongBan', student.maPhongBan ?? '');
+    const list = Array.isArray(files) ? files : (files ? [files] : []);
+    list.forEach((f) => {
+      if (f) formData.append('files', f);
+    });
+    return api.put(`/sinhvien/${maSinhVien}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
+  // (avatar được lưu từ chính ảnh mẫu khuôn mặt, không cần upload riêng)
   delete: (rfid) => api.delete(`/sinhvien/${rfid}`),
   checkExists: (rfid) => api.get(`/sinhvien/exists/${rfid}`),
   bulkUpdateRfid: (studentList) => api.post('/sinhvien/bulk-update-rfid', studentList),

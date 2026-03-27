@@ -31,6 +31,14 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien ORDER BY p.ngay DESC, p.ca ASC")
     List<PhieuDiemDanh> findByMaSinhVien(@Param("maSinhVien") String maSinhVien);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien AND p.ngay = :ngay AND p.ca = :ca " +
+            "ORDER BY p.createdAt DESC, p.id DESC")
+    List<PhieuDiemDanh> findByMaSinhVienAndNgayAndCaOrderByCreatedAtDesc(
+            @Param("maSinhVien") String maSinhVien,
+            @Param("ngay") LocalDate ngay,
+            @Param("ca") Integer ca
+    );
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE " +
            "(:ngay IS NULL OR p.ngay = :ngay) AND " +
@@ -67,7 +75,11 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
             "(:phongHocListEmpty = true OR p.phongHoc IN :phongHocList) AND " +
             "(:maPhongBanListEmpty = true OR p.maPhongBan IN :maPhongBanList) AND " +
             "(:tinhTrang IS NULL OR p.tinhTrangDiemDanh = :tinhTrang) AND " +
-            "(:trangThaiHoc IS NULL OR p.trangThai = :trangThaiHoc)")
+            "(:trangThaiHoc IS NULL OR p.trangThai = :trangThaiHoc) " +
+            "ORDER BY " +
+            "CASE WHEN UPPER(:sortDir) = 'ASC' THEN p.ngay END ASC, " +
+            "CASE WHEN UPPER(:sortDir) = 'DESC' THEN p.ngay END DESC, " +
+            "p.ca ASC, p.createdAt DESC, p.id DESC")
     Page<PhieuDiemDanh> findByAdvancedFiltersPaged(@Param("startDate") LocalDate startDate,
                                                    @Param("endDate") LocalDate endDate,
                                                    @Param("ca") Integer ca,
@@ -78,6 +90,7 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
                                                    @Param("maPhongBanListEmpty") boolean maPhongBanListEmpty,
                                                    @Param("tinhTrang") PhieuDiemDanh.TrangThai tinhTrang,
                                                    @Param("trangThaiHoc") PhieuDiemDanh.TrangThaiHoc trangThaiHoc,
+                                                   @Param("sortDir") String sortDir,
                                                    Pageable pageable);
 
     @Query("SELECT p FROM PhieuDiemDanh p WHERE " +

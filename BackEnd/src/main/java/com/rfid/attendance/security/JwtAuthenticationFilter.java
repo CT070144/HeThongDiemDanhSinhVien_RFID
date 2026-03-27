@@ -26,6 +26,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         
         try {
+            // Nếu request đã được authenticate bởi filter khác (vd: API Key) thì không override nữa.
+            if (SecurityContextHolder.getContext().getAuthentication() != null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String authHeader = request.getHeader("Authorization");
             
             if (authHeader != null && authHeader.startsWith("Bearer ")) {

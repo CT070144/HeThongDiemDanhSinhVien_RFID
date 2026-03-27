@@ -13,6 +13,7 @@ import Configuration from './pages/Configuration';
 import Dashboard from './pages/Dashboard';
 import LopHocPhanManagement from './pages/LopHocPhanManagement';
 import Room from './pages/Room';
+import Esp32Simulator from './pages/Esp32Simulator';
 import './App.css';
 
 // Protected Route Component
@@ -92,6 +93,11 @@ function AppContent() {
           <Route path="/room" element={
             <ProtectedRoute>
               <Room />
+            </ProtectedRoute>
+          } />
+          <Route path="/esp32-sim" element={
+            <ProtectedRoute>
+              <Esp32Simulator />
             </ProtectedRoute>
           } />
         </Routes>

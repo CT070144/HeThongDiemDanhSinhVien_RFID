@@ -145,6 +145,31 @@ const AttendanceNotificationListener = () => {
           console.error("Error processing invalid RFID notification:", error);
         }
       });
+
+      // Lắng nghe event khuôn mặt không khớp
+      socketRef.current.on("invalid-face", (result) => {
+        console.log("Invalid face received:", result);
+
+        try {
+          const payload = typeof result === 'string' ? JSON.parse(result) : result;
+          const uid = typeof payload === 'string' ? payload : (payload?.uid || payload?.rfid || payload);
+          const uidString = uid && `${uid}`.trim() !== '' ? `${uid}`.trim() : '';
+
+          if (!uidString) return;
+
+          toast.warning(`Chấm công khuôn mặt không khớp: ${uidString}`, {
+            position: "top-right",
+            autoClose: 7000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            toastId: `invalid-face-${uidString}`,
+          });
+        } catch (error) {
+          console.error("Error processing invalid-face notification:", error);
+        }
+      });
     }
 
     // Cleanup function - disconnect socket khi component unmount

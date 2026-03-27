@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Container, Row, Col, Card, Table, Button, Form, Modal, Alert, Badge, ProgressBar, Spinner, InputGroup } from 'react-bootstrap';
 import { toast } from 'react-toastify';
 import { studentAPI, attendanceAPI, phongBanAPI } from '../services/api';
 import api from '../services/api';
 import * as XLSX from 'xlsx';
-import { FaUsers, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode, FaCheckCircle, FaList } from 'react-icons/fa';
+import { FaUsers,FaCamera, FaPlus, FaUpload, FaSearch, FaEdit, FaTrash, FaIdCard, FaQrcode, FaCheckCircle, FaList } from 'react-icons/fa';
 
 const StudentManagement = () => {
   const [students, setStudents] = useState([]);
@@ -22,6 +22,12 @@ const StudentManagement = () => {
     tenSinhVien: '',
     maPhongBan: ''
   });
+  const [faceFiles, setFaceFiles] = useState([]); // Danh sách ảnh mẫu để encode faceid
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState(null); // Ảnh đại diện (lưu từ ảnh mẫu khuôn mặt)
+  const [showWebcam, setShowWebcam] = useState(false);
+  const [webcamError, setWebcamError] = useState('');
+  const videoRef = useRef(null);
+  const webcamStreamRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
@@ -114,6 +120,113 @@ const StudentManagement = () => {
     return () => clearInterval(intervalId);
   }, [showModal, scanning, latestRfid]);
 
+  // Preview avatar: ưu tiên file đầu tiên người dùng chọn/chụp (ảnh mẫu khuôn mặt),
+  // nếu không thì dùng endpoint tải avatar đã lưu của sinh viên.
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrlToRevoke = null;
+
+    const run = async () => {
+      const primaryFaceFile = faceFiles[0];
+      if (primaryFaceFile) {
+        const url = URL.createObjectURL(primaryFaceFile);
+        if (cancelled) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        objectUrlToRevoke = url;
+        setAvatarPreviewUrl(url);
+        return;
+      }
+
+      if (editingStudent && editingStudent.pathAvatar) {
+        try {
+          const resp = await api.get(`/sinhvien/${editingStudent.maSinhVien}/avatar`, {
+            responseType: 'blob'
+          });
+          const url = URL.createObjectURL(resp.data);
+          if (cancelled) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+          objectUrlToRevoke = url;
+          setAvatarPreviewUrl(url);
+        } catch (e) {
+          if (!cancelled) setAvatarPreviewUrl(null);
+        }
+        return;
+      }
+
+      if (!cancelled) setAvatarPreviewUrl(null);
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+      if (objectUrlToRevoke) URL.revokeObjectURL(objectUrlToRevoke);
+    };
+  }, [faceFiles, editingStudent]);
+
+  useEffect(() => {
+    return () => {
+      if (webcamStreamRef.current) {
+        webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+        webcamStreamRef.current = null;
+      }
+    };
+  }, []);
+
+  const startWebcam = async () => {
+    try {
+      setWebcamError('');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false
+      });
+      webcamStreamRef.current = stream;
+      setShowWebcam(true);
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      }, 0);
+    } catch (e) {
+      setWebcamError('Không thể mở webcam. Vui lòng cấp quyền camera.');
+    }
+  };
+
+  const stopWebcam = () => {
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach((t) => t.stop());
+      webcamStreamRef.current = null;
+    }
+    setShowWebcam(false);
+  };
+
+  const captureFromWebcam = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `webcam_${Date.now()}.jpg`, { type: 'image/jpeg' });
+      setFaceFiles((prev) => [...prev, file]);
+    }, 'image/jpeg', 0.92);
+  };
+
+  const handleFaceFilesUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setFaceFiles((prev) => [...prev, ...files]);
+    e.target.value = '';
+  };
+
   const loadLopHocPhans = async () => {
     try {
       const response = await api.get('/lophocphan');
@@ -203,15 +316,25 @@ const StudentManagement = () => {
 
       if (editingStudent) {
         // Sử dụng mã nhân viên làm khóa chính cho update
-        await studentAPI.update(editingStudent.maSinhVien, formData);
+        if (faceFiles && faceFiles.length > 0) {
+          await studentAPI.updateWithFace(editingStudent.maSinhVien, formData, faceFiles);
+        } else {
+          await studentAPI.update(editingStudent.maSinhVien, formData);
+        }
         toast.success('Cập nhật nhân viên thành công');
       } else {
-        await studentAPI.create(formData);
+        if (faceFiles && faceFiles.length > 0) {
+          await studentAPI.createWithFace(formData, faceFiles);
+        } else {
+          await studentAPI.create(formData);
+        }
         toast.success('Thêm nhân viên thành công');
       }
       
       handleCloseModal();
       setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '', maPhongBan: '' });
+      setFaceFiles([]);
+      setAvatarPreviewUrl(null);
       setEditingStudent(null);
       loadStudents();
     } catch (error) {
@@ -229,6 +352,8 @@ const StudentManagement = () => {
       tenSinhVien: student.tenSinhVien,
       maPhongBan: student.maPhongBan || ''
     });
+    setFaceFiles([]);
+    setAvatarPreviewUrl(null);
     setLatestRfid(null);
     setRfidStatus('current'); // RFID hiện tại của nhân viên đang sửa
     setScanning(false);
@@ -250,6 +375,8 @@ const StudentManagement = () => {
   const handleAddNew = () => {
     setEditingStudent(null);
     setFormData({ maSinhVien: '', rfid: '', tenSinhVien: '', maPhongBan: '' });
+    setFaceFiles([]);
+    setAvatarPreviewUrl(null);
     setLatestRfid(null);
     setRfidStatus(null);
     setScanning(false);
@@ -572,6 +699,9 @@ const StudentManagement = () => {
     setScanning(false);
     setLatestRfid(null);
     setRfidStatus(null);
+    setFaceFiles([]);
+    setAvatarPreviewUrl(null);
+    stopWebcam();
   };
 
   const modalPrimaryStyle = {
@@ -776,6 +906,35 @@ const StudentManagement = () => {
         </Modal.Header>
         <Form onSubmit={handleSubmit}>
           <Modal.Body>
+            <div className="d-flex gap-4 align-items-start">
+              <div style={{ width: 120 }}>
+                {avatarPreviewUrl ? (
+                  <img
+                    src={avatarPreviewUrl}
+                    alt="Avatar"
+                    style={{
+                      width: 140,
+                      height: 180,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid rgb(0, 0, 0)'
+                    }}
+                  />
+                ) : (
+                  <img
+                    src="/unknow.jpg"
+                    alt="Avatar mặc định"
+                    style={{
+                      width: 140,
+                      height: 180,
+                      objectFit: 'cover',
+                      borderRadius: 8,
+                      border: '1px solid rgb(0, 0, 0)'
+                    }}
+                  />
+                )}
+              </div>
+              <div style={{ flex: 1 }}>
             <Form.Group className="mb-3">
               <Form.Label className="fw-semibold d-flex align-items-center">
                 <FaIdCard className="me-2" style={{ color: '#212529' }} />
@@ -789,6 +948,22 @@ const StudentManagement = () => {
                 required
                 disabled={editingStudent ? true : false}
                 placeholder="Nhập mã nhân viên (VD: CT070201)"
+                className="shadow-sm"
+                style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
+              />
+            </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold d-flex align-items-center">
+                <FaUsers className="me-2" style={{ color: '#212529' }} />
+                Tên nhân viên
+              </Form.Label>
+              <Form.Control
+                type="text"
+                name="tenSinhVien"
+                value={formData.tenSinhVien}
+                onChange={handleInputChange}
+                required
+                placeholder="Nhập họ và tên nhân viên"
                 className="shadow-sm"
                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
@@ -915,21 +1090,76 @@ const StudentManagement = () => {
  
 </Form.Group>
 
-<Form.Group className="mb-3">
-              <Form.Label className="fw-semibold d-flex align-items-center">
-                <FaUsers className="me-2" style={{ color: '#212529' }} />
-                Tên nhân viên
-              </Form.Label>
+            <Form.Group className="mb-3">
+              <Form.Label className="fw-semibold">Ảnh mẫu khuôn mặt (tùy chọn)</Form.Label>
               <Form.Control
-                type="text"
-                name="tenSinhVien"
-                value={formData.tenSinhVien}
-                onChange={handleInputChange}
-                required
-                placeholder="Nhập họ và tên nhân viên"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFaceFilesUpload}
                 className="shadow-sm"
                 style={{ border: '1px solid #dee2e6', borderRadius: '0.375rem' }}
               />
+              <div className="d-flex gap-2 mt-2">
+                {!showWebcam ? (
+                  <Button size="sm" variant="outline-primary" type="button" onClick={startWebcam}>
+                    <FaCamera className="me-1" />
+                    Mở webcam
+                  </Button>
+                ) : (
+                  <>
+                    <Button size="sm" variant="primary" type="button" onClick={captureFromWebcam}>
+                      Chụp ảnh
+                    </Button>
+                    <Button size="sm" variant="outline-secondary" type="button" onClick={stopWebcam}>
+                      Tắt webcam
+                    </Button>
+                  </>
+                )}
+              </div>
+              {webcamError && (
+                <div className="text-danger small mt-1">{webcamError}</div>
+              )}
+              {showWebcam && (
+                <div className="mt-2">
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    style={{ width: '100%', maxWidth: 420, borderRadius: 8, border: '1px solid #dee2e6' }}
+                  />
+                </div>
+              )}
+
+              {faceFiles.length > 0 ? (
+                <>
+                  <div className="text-muted small mt-2">
+                    Đã chọn/chụp <strong>{faceFiles.length}</strong> ảnh (ảnh đầu tiên dùng làm ảnh đại diện, còn toàn bộ ảnh sẽ được encode).
+                  </div>
+                  <div className="d-flex flex-wrap gap-2 mt-2">
+                    {faceFiles.map((file, idx) => (
+                      <div key={`${file.name}_${idx}`} className="border rounded p-2" style={{ minWidth: 140 }}>
+                        <div className="small text-truncate" title={file.name}>{file.name}</div>
+                        <Button
+                          size="sm"
+                          variant="outline-danger"
+                          className="mt-1"
+                          type="button"
+                          onClick={() => setFaceFiles((prev) => prev.filter((_, i) => i !== idx))}
+                        >
+                          Xóa
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : editingStudent ? (
+                <div className="text-muted small mt-1">
+                </div>
+              ) : (
+                <div className="text-muted small mt-1"></div>
+              )}
             </Form.Group>
 
             <Form.Group className="mb-3">
@@ -971,6 +1201,8 @@ const StudentManagement = () => {
                 </Button>
               </InputGroup>
             </Form.Group>
+              </div>
+            </div>
           </Modal.Body>
           <Modal.Footer>
             <Button variant="secondary" onClick={handleCloseModal}>
