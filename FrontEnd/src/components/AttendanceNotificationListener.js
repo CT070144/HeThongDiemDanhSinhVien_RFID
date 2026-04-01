@@ -42,14 +42,14 @@ const AttendanceNotificationListener = () => {
         console.error("Global attendance notification socket connect_error:", err.message || err);
       });
 
-      // Lắng nghe event điểm danh mới
+      // Lắng nghe event chấm công mới
       socketRef.current.on("update-attendance", (result) => {
         console.log("New attendance record received:", result);
         
         try {
           // Parse result nếu là string
           const attendanceRecord = typeof result === 'string' ? JSON.parse(result) : result;
-          
+          console.log("Attendance record:", attendanceRecord);
           // Kiểm tra xem đây có phải là bản ghi mới không
           if (!attendanceRecord.id) {
             return;
@@ -75,14 +75,14 @@ const AttendanceNotificationListener = () => {
                                  attendanceRecord.tenSinhVien.trim() !== '';
 
           if (hasStudentInfo) {
-            // Có thông tin sinh viên -> Phiếu điểm danh mới
+            // Có thông tin sinh viên -> Phiếu chấm công mới
             const studentName = attendanceRecord.tenSinhVien;
             const studentCode = attendanceRecord.maSinhVien;
             const room = attendanceRecord.phongHoc || 'N/A';
             const ca = attendanceRecord.ca ? `Ca ${attendanceRecord.ca}` : '';
             
             toast.success(
-              `${studentName} (${studentCode}) đã điểm danh - ${room} ${ca}`,
+              `${studentName} (${studentCode}) đã chấm công - ${room} ${ca}`,
               {
                 position: "top-right",
                 autoClose: 5000,

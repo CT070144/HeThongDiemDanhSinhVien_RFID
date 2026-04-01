@@ -35,6 +35,7 @@ const AttendanceHistory = () => {
     maPhongBan: '',
     sortDir: 'DESC' // DESC: ngày mới nhất -> cũ nhất
   });
+  const [debouncedFilters, setDebouncedFilters] = useState(filters);
   const [showPhongHocModal, setShowPhongHocModal] = useState(false);
   const [showPhongBanModal, setShowPhongBanModal] = useState(false);
   const [phongHocSearch, setPhongHocSearch] = useState('');
@@ -48,10 +49,16 @@ const AttendanceHistory = () => {
   const [attendanceDetailLoading, setAttendanceDetailLoading] = useState(false);
 
   useEffect(() => {
-    loadAttendance();
     loadCaLams();
     loadLookupOptions();
-  }, [page]);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedFilters(filters);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [filters]);
 
   const loadCaLams = async () => {
     try {
@@ -156,15 +163,15 @@ const AttendanceHistory = () => {
       const response = await attendanceAPI.getPaged({
         page: page - 1,
         size: pageSize,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        ca: filters.ca,
-        maSinhVien: filters.maSinhVien,
-        phongHoc: (filters.phongHoc || []).join(','),
-        tinhTrang: filters.tinhTrang,
-        trangThai: filters.trangThai,
-        maPhongBan: filters.maPhongBan,
-        sortDir: filters.sortDir
+        startDate: debouncedFilters.startDate,
+        endDate: debouncedFilters.endDate,
+        ca: debouncedFilters.ca,
+        maSinhVien: debouncedFilters.maSinhVien,
+        phongHoc: (debouncedFilters.phongHoc || []).join(','),
+        tinhTrang: debouncedFilters.tinhTrang,
+        trangThai: debouncedFilters.trangThai,
+        maPhongBan: debouncedFilters.maPhongBan,
+        sortDir: debouncedFilters.sortDir
       });
       const content = response?.data?.content || [];
       setAttendance(content);
@@ -174,7 +181,7 @@ const AttendanceHistory = () => {
     } catch (error) {
       notify.error('Lỗi khi tải lịch sử chấm công');
     }
-  }, [filters, notify, page, pageSize]);
+  }, [debouncedFilters, notify, page, pageSize]);
 
   const handleViewAttendanceDetail = async (record) => {
     if (!record || !record.id) return;
@@ -184,6 +191,7 @@ const AttendanceHistory = () => {
       const resp = typeof attendanceAPI?.getAttendanceDetail === 'function'
         ? await attendanceAPI.getAttendanceDetail(record.id)
         : await api.get(`/attendance/detail/${record.id}`);
+      console.log(resp.data);
       setAttendanceDetail(resp.data || null);
       setShowAttendanceDetailModal(true);
       console.log(resp.data);
@@ -204,15 +212,15 @@ const AttendanceHistory = () => {
       const response = await attendanceAPI.getPaged({
         page: 0,
         size: 100000,
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        ca: filters.ca,
-        maSinhVien: filters.maSinhVien,
-        phongHoc: (filters.phongHoc || []).join(','),
-        tinhTrang: filters.tinhTrang,
-        trangThai: filters.trangThai,
-        maPhongBan: filters.maPhongBan,
-        sortDir: filters.sortDir
+        startDate: debouncedFilters.startDate,
+        endDate: debouncedFilters.endDate,
+        ca: debouncedFilters.ca,
+        maSinhVien: debouncedFilters.maSinhVien,
+        phongHoc: (debouncedFilters.phongHoc || []).join(','),
+        tinhTrang: debouncedFilters.tinhTrang,
+        trangThai: debouncedFilters.trangThai,
+        maPhongBan: debouncedFilters.maPhongBan,
+        sortDir: debouncedFilters.sortDir
       });
       const allFiltered = response?.data?.content || [];
       setAllFilteredAttendance(allFiltered);
@@ -221,7 +229,7 @@ const AttendanceHistory = () => {
       setAllFilteredAttendance([]);
       calculateAttendanceStats([]);
     }
-  }, [filters]);
+  }, [debouncedFilters]);
 
   useEffect(() => {
     loadAttendanceStatsByFilters();
@@ -810,8 +818,8 @@ const AttendanceHistory = () => {
               <div style={{ flex: 1 }}>
                 <div><strong>ID:</strong> {attendanceDetail.attendance.id}</div>
                 <div><strong>RFID:</strong> {attendanceDetail.attendance.rfid}</div>
-                <div><strong>Mã SV:</strong> {attendanceDetail.attendance.maSinhVien}</div>
-                <div><strong>Tên SV:</strong> {attendanceDetail.attendance.tenSinhVien}</div>
+                <div><strong>Mã NV:</strong> {attendanceDetail.attendance.maSinhVien}</div>
+                <div><strong>Tên NV:</strong> {attendanceDetail.attendance.tenSinhVien}</div>
                 <div><strong>Bộ phận:</strong> {attendanceDetail.attendance.maPhongBan || '-'}</div>
                 <div><strong>Vị trí:</strong> {attendanceDetail.attendance.phongHoc || '-'}</div>
                 <div><strong>Ngày:</strong> {attendanceDetail.attendance.ngay ? new Date(attendanceDetail.attendance.ngay).toLocaleDateString('vi-VN') : '-'}</div>

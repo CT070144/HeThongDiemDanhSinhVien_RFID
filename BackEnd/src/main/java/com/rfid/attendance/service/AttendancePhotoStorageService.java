@@ -48,6 +48,32 @@ public class AttendancePhotoStorageService {
         return Paths.get(uploadDir, String.valueOf(attendanceId), filename).toString().replace("\\", "/");
     }
 
+    /**
+     * Lưu ảnh từ bytes (để tái sử dụng 1 ảnh cho nhiều phiếu điểm danh) và trả về relative path.
+     */
+    public String storePhotoBytes(Long attendanceId, byte[] bytes, String originalFilename, String contentType) throws IOException {
+        if (attendanceId == null) {
+            throw new IllegalArgumentException("attendanceId không được để trống");
+        }
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+
+        String ext = getFileExtension(originalFilename, contentType);
+        if (ext == null) {
+            throw new IllegalArgumentException("Định dạng ảnh không hợp lệ");
+        }
+
+        String filename = UUID.randomUUID().toString() + "." + ext;
+        Path dir = Paths.get(uploadDir, String.valueOf(attendanceId));
+        Files.createDirectories(dir);
+
+        Path target = dir.resolve(filename);
+        Files.write(target, bytes);
+
+        return Paths.get(uploadDir, String.valueOf(attendanceId), filename).toString().replace("\\", "/");
+    }
+
     public byte[] loadPhoto(String pathFile) throws IOException {
         if (pathFile == null || pathFile.isBlank()) {
             return null;

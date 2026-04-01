@@ -146,7 +146,7 @@ const Esp32Simulator = () => {
     } catch (e) {
       console.error(e);
       const status = e?.response?.status;
-      const msg = e?.response?.data?.error || e?.response?.data?.message || 'Lỗi khi gửi request';
+      const msg = e?.response?.data?.error || e?.response?.data?.name || 'Lỗi khi gửi request';
       notify.error(status ? `${status}: ${msg}` : msg);
     } finally {
       setLoading(false);

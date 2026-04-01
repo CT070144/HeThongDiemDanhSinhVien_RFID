@@ -20,7 +20,7 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
                                                    @Param("ngay") LocalDate ngay, 
                                                    @Param("ca") Integer ca);
     
-    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay ORDER BY p.ca ASC, p.createdAt DESC")
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay ORDER BY p.ca DESC, p.createdAt DESC")
     List<PhieuDiemDanh> findByNgay(@Param("ngay") LocalDate ngay);
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ca = :ca ORDER BY p.ngay DESC, p.createdAt DESC")
@@ -28,9 +28,17 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
 
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.rfid = :rfid ORDER BY p.ngay DESC, p.createdAt DESC")
     List<PhieuDiemDanh> findByRfid(@Param("rfid") String rfid);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.rfid = :rfid AND p.ngay = :ngay ORDER BY p.ca ASC, p.createdAt ASC, p.id ASC")
+    List<PhieuDiemDanh> findByRfidAndNgayOrderByCaAscCreatedAtAsc(@Param("rfid") String rfid,
+                                                                  @Param("ngay") LocalDate ngay);
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien ORDER BY p.ngay DESC, p.ca ASC")
     List<PhieuDiemDanh> findByMaSinhVien(@Param("maSinhVien") String maSinhVien);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien AND p.ngay = :ngay ORDER BY p.ca ASC, p.createdAt ASC, p.id ASC")
+    List<PhieuDiemDanh> findByMaSinhVienAndNgayOrderByCaAscCreatedAtAsc(@Param("maSinhVien") String maSinhVien,
+                                                                        @Param("ngay") LocalDate ngay);
 
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.maSinhVien = :maSinhVien AND p.ngay = :ngay AND p.ca = :ca " +
             "ORDER BY p.createdAt DESC, p.id DESC")
@@ -129,6 +137,9 @@ public interface PhieuDiemDanhRepository extends JpaRepository<PhieuDiemDanh, Lo
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay AND p.trangThai = :trangThai AND p.gioRa IS NULL")
     List<PhieuDiemDanh> findByNgayAndTrangThaiAndGioRaIsNull(@Param("ngay") LocalDate ngay, 
                                                              @Param("trangThai") PhieuDiemDanh.TrangThaiHoc trangThai);
+
+    @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay AND p.gioRa IS NULL")
+    List<PhieuDiemDanh> findByNgayAndGioRaIsNull(@Param("ngay") LocalDate ngay);
     
     @Query("SELECT p FROM PhieuDiemDanh p WHERE p.ngay = :ngay AND p.ca = :ca AND p.trangThai = :trangThai AND p.gioRa IS NULL")
     List<PhieuDiemDanh> findByNgayAndCaAndTrangThaiAndGioRaIsNull(@Param("ngay") LocalDate ngay, 

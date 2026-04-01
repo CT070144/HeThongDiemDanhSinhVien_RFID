@@ -40,6 +40,8 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Base64;
 import org.springframework.web.multipart.MultipartFile;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 @Transactional
@@ -102,6 +104,254 @@ public class AttendanceService {
         } catch (Exception e) {
             throw new RuntimeException("Lỗi khi lưu ảnh chụp điểm danh", e);
         }
+    }
+
+    /**
+     * Gắn cùng 1 ảnh chụp cho nhiều phiếu điểm danh (dùng cho trường hợp split/xuyên ca).
+     * Mỗi phiếu sẽ có file ảnh riêng theo attendanceId để đáp ứng yêu cầu "tất cả bản ghi đều có ảnh".
+     */
+    @Transactional
+    public void attachAttendancePhotoToMany(List<PhieuDiemDanh> attendances, MultipartFile image) {
+        if (attendances == null || attendances.isEmpty()) return;
+        if (image == null || image.isEmpty()) return;
+        try {
+            byte[] bytes = image.getBytes();
+            String originalName = image.getOriginalFilename();
+            String contentType = image.getContentType();
+
+            Set<Long> dedup = new HashSet<>();
+            for (PhieuDiemDanh a : attendances) {
+                if (a == null || a.getId() == null) continue;
+                if (!dedup.add(a.getId())) continue;
+                if (a.getPathFile() != null && !a.getPathFile().isBlank()) {
+                    // Đã có ảnh rồi -> không ghi đè
+                    continue;
+                }
+                String pathFile = attendancePhotoStorageService.storePhotoBytes(a.getId(), bytes, originalName, contentType);
+                if (pathFile != null && !pathFile.isBlank()) {
+                    a.setPathFile(pathFile);
+                    phieuDiemDanhRepository.save(a);
+                }
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Lỗi khi lưu ảnh chụp điểm danh (multi)", e);
+        }
+    }
+
+    /**
+     * Xử lý điểm danh RFID (theo logic hiện tại) và nếu có ảnh thì gắn ảnh cho toàn bộ các phiếu bị ảnh hưởng
+     * (bao gồm cả các ca ở giữa khi split/xuyên ca trong ngày).
+     */
+    @Transactional
+    public PhieuDiemDanh processRfidAttendanceWithDeviceAndPhoto(String rfid, String maThietBi, MultipartFile image) {
+        ProcessResult res = processRfidAttendanceWithDeviceAndCollect(rfid, maThietBi);
+        if (image != null && !image.isEmpty()) {
+            attachAttendancePhotoToMany(res.affectedRecords, image);
+        }
+        return res.lastRecord;
+    }
+
+    private static class ProcessResult {
+        private final PhieuDiemDanh lastRecord;
+        private final List<PhieuDiemDanh> affectedRecords;
+
+        private ProcessResult(PhieuDiemDanh lastRecord, List<PhieuDiemDanh> affectedRecords) {
+            this.lastRecord = lastRecord;
+            this.affectedRecords = affectedRecords;
+        }
+    }
+
+    /**
+     * Giống {@link #processRfidAttendanceWithDevice(String, String)} nhưng trả thêm danh sách phiếu bị ảnh hưởng
+     * (để phục vụ gắn ảnh hàng loạt).
+     */
+    private ProcessResult processRfidAttendanceWithDeviceAndCollect(String rfid, String maThietBi) {
+        List<PhieuDiemDanh> affected = new ArrayList<>();
+
+        // process core
+        ProcessResult core = processRfidAttendanceAndCollect(rfid);
+        PhieuDiemDanh record = core.lastRecord;
+        affected.addAll(core.affectedRecords);
+
+        if (record.getRfid() == null) {
+            attachDeviceContextToUnregisteredRfid(rfid, maThietBi);
+            socketIOServer.getAllClients().forEach(client -> {
+                String message = null;
+                try {
+                    message = objectMapper.writeValueAsString(rfid);
+                } catch (JsonProcessingException e) {
+                    System.out.println("error convert RFID to JSON");
+                }
+                System.out.println("publishing invalid-rfid event: " + message);
+                client.sendEvent("invalid-rfid", message);
+            });
+            return new ProcessResult(record, affected);
+        }
+
+        if (maThietBi != null && !maThietBi.isEmpty() && record.getCa() != -99) {
+            Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
+            tb.ifPresent(thietBi -> {
+                record.setPhongHoc(thietBi.getPhongHoc());
+                phieuDiemDanhRepository.save(record);
+            });
+        }
+
+        socketIOServer.getAllClients().forEach(client -> {
+            String message = null;
+            try {
+                message = objectMapper.writeValueAsString(record);
+            } catch (JsonProcessingException e) {
+                System.out.println("error convert object");
+            }
+            System.out.println("publishing event " + message);
+            client.sendEvent("update-attendance", message);
+        });
+
+        // make sure record is included
+        if (record != null) {
+            affected.add(record);
+        }
+        return new ProcessResult(record, affected);
+    }
+
+    /**
+     * Core RFID logic trả về record cuối + list record bị ảnh hưởng (create/update).
+     * Mode mới: chỉ xử lý trong NGÀY HIỆN TẠI.
+     */
+    private ProcessResult processRfidAttendanceAndCollect(String rfid) {
+        List<PhieuDiemDanh> affected = new ArrayList<>();
+
+        String trimmedRfid = rfid != null ? rfid.trim() : "";
+        if (trimmedRfid.isEmpty()) {
+            saveUnregisteredRfid(rfid);
+            return new ProcessResult(new PhieuDiemDanh(), affected);
+        }
+
+        Optional<SinhVien> sinhVienOpt = sinhVienRepository.findByRfid(trimmedRfid);
+        if (sinhVienOpt.isEmpty()) {
+            saveUnregisteredRfid(trimmedRfid);
+            PhieuDiemDanh response = new PhieuDiemDanh();
+            response.setRfid(null);
+            return new ProcessResult(response, affected);
+        }
+        SinhVien sinhVien = sinhVienOpt.get();
+
+        LocalDate today = LocalDate.now(APP_ZONE_ID);
+        LocalTime now = LocalTime.now(APP_ZONE_ID);
+
+        List<CaLam> shifts = caLamRepository.findAllByOrderByMaCaAsc();
+        if (shifts == null || shifts.isEmpty()) {
+            throw new IllegalStateException("Chưa cấu hình ca làm");
+        }
+
+        List<PhieuDiemDanh> todayRecords = phieuDiemDanhRepository
+                .findByRfidAndNgayOrderByCaAscCreatedAtAsc(trimmedRfid, today);
+
+        PhieuDiemDanh open = todayRecords.stream()
+                .filter(r -> r != null && r.getGioRa() == null)
+                .reduce((a, b) -> b)
+                .orElse(null);
+
+        Integer inShiftCa = resolveShiftContaining(shifts, now);
+        Integer nextShiftCa = resolveNextShift(shifts, now);
+        Integer prevShiftCa = resolvePreviousShift(shifts, now);
+
+        if (open == null) {
+            // === CHECK-IN ===
+            if (inShiftCa == null) {
+                // Nếu sau giờ kết thúc ca cuối cùng trong ngày thì không ghi nhận
+                if (isAfterLastShiftEndSameDay(shifts, now)) {
+                    System.out.println("ngoài giờ làm việc");
+                    throw new RuntimeException("Ngoài giờ làm (sau ca cuối)");
+                }
+            }
+
+            Integer targetCa = (inShiftCa != null) ? inShiftCa : nextShiftCa;
+            if (targetCa == null) {
+                throw new IllegalStateException("Không xác định được ca làm phù hợp");
+            }
+
+            boolean completedSameShift = todayRecords.stream()
+                    .anyMatch(r -> r != null
+                            && r.getCa() != null
+                            && r.getCa().equals(targetCa)
+                            && r.getGioVao() != null
+                            && r.getGioRa() != null);
+            if (completedSameShift) {
+                PhieuDiemDanh response = new PhieuDiemDanh();
+                response.setRfid(trimmedRfid);
+                response.setTenSinhVien(sinhVien.getTenSinhVien());
+                response.setCa(-99);
+                return new ProcessResult(response, affected);
+            }
+
+            PhieuDiemDanh newRecord = new PhieuDiemDanh();
+            newRecord.setRfid(trimmedRfid);
+            newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
+            newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
+            newRecord.setMaPhongBan(sinhVien.getMaPhongBan());
+            newRecord.setNgay(today);
+            newRecord.setCa(targetCa);
+            newRecord.setGioVao(now);
+            newRecord.setGioRa(null);
+            newRecord.setTinhTrangDiemDanh(determineAttendanceStatus(now, targetCa));
+            newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
+            PhieuDiemDanh saved = phieuDiemDanhRepository.save(newRecord);
+            affected.add(saved);
+            return new ProcessResult(saved, affected);
+        }
+
+        // === CHECK-OUT ===
+        Integer checkoutCa = (inShiftCa != null) ? inShiftCa : (prevShiftCa != null ? prevShiftCa : open.getCa());
+        if (checkoutCa == null) checkoutCa = open.getCa();
+
+        SplitResult split = splitAttendanceAcrossShiftsSameDayCollect(open, sinhVien, today, now, checkoutCa, shifts);
+        affected.addAll(split.affectedRecords);
+        return new ProcessResult(split.lastRecord, affected);
+    }
+
+    private boolean isAfterLastShiftEndSameDay(List<CaLam> shifts, LocalTime now) {
+        if (shifts == null || shifts.isEmpty() || now == null) return false;
+        LocalTime latestEnd = null;
+        for (CaLam s : shifts) {
+            if (s == null || s.getGioBatDau() == null || s.getGioKetThuc() == null) continue;
+            // Bỏ ca qua đêm trong mode same-day
+            if (!s.getGioKetThuc().isAfter(s.getGioBatDau())) continue;
+            if (latestEnd == null || s.getGioKetThuc().isAfter(latestEnd)) {
+                latestEnd = s.getGioKetThuc();
+            }
+        }
+        return latestEnd != null && now.isAfter(latestEnd);
+    }
+
+    private static class SplitResult {
+        private final PhieuDiemDanh lastRecord;
+        private final List<PhieuDiemDanh> affectedRecords;
+
+        private SplitResult(PhieuDiemDanh lastRecord, List<PhieuDiemDanh> affectedRecords) {
+            this.lastRecord = lastRecord;
+            this.affectedRecords = affectedRecords;
+        }
+    }
+
+    private SplitResult splitAttendanceAcrossShiftsSameDayCollect(
+            PhieuDiemDanh openRecord,
+            SinhVien sinhVien,
+            LocalDate day,
+            LocalTime checkoutTime,
+            Integer checkoutCa,
+            List<CaLam> shifts
+    ) {
+        List<PhieuDiemDanh> affected = new ArrayList<>();
+        PhieuDiemDanh last = splitAttendanceAcrossShiftsSameDay(openRecord, sinhVien, day, checkoutTime, checkoutCa, shifts);
+
+        // Re-load today records for this rfid to include "ca giữa" vừa tạo/cập nhật (đảm bảo list đầy đủ)
+        if (openRecord != null && openRecord.getRfid() != null && day != null) {
+            affected.addAll(phieuDiemDanhRepository.findByRfidAndNgayOrderByCaAscCreatedAtAsc(openRecord.getRfid(), day));
+        } else if (last != null) {
+            affected.add(last);
+        }
+        return new SplitResult(last, affected);
     }
 
     public AttendanceDetailResponse getAttendanceDetail(Long id) {
@@ -537,114 +787,152 @@ public class AttendanceService {
     }
     
     public PhieuDiemDanh processRfidAttendance(String rfid){
-        // Log thông tin debug
-        System.out.println("=== RFID ATTENDANCE DEBUG ===");
-        System.out.println("RFID nhận được: '" + rfid + "'");
-        System.out.println("Độ dài RFID: " + (rfid != null ? rfid.length() : "null"));
-        System.out.println("RFID trimmed: '" + (rfid != null ? rfid.trim() : "null") + "'");
-        
-        // Trim RFID để tránh lỗi do khoảng trắng
-        String trimmedRfid = rfid != null ? rfid.trim() : "";
-        if (trimmedRfid.isEmpty()) {
-            System.out.println("RFID rỗng hoặc null");
-            saveUnregisteredRfid(rfid);
-            return new PhieuDiemDanh();
-        }
-        
-        // Kiểm tra sinh viên có tồn tại không
-        Optional<SinhVien> sinhVienOpt = sinhVienRepository.findByRfid(trimmedRfid);
-        System.out.println("Kết quả tìm kiếm sinh viên: " + (sinhVienOpt.isPresent() ? "Tìm thấy" : "Không tìm thấy"));
-        
-        if (!sinhVienOpt.isPresent()) {
-            System.out.println("Không tìm thấy sinh viên với RFID: " + trimmedRfid);
-            
-            // Debug: Kiểm tra tất cả RFID trong database
-            List<SinhVien> allStudents = sinhVienRepository.findAll();
-            System.out.println("Tổng số sinh viên trong DB: " + allStudents.size());
-            System.out.println("Danh sách RFID trong DB:");
-            for (SinhVien sv : allStudents) {
-                System.out.println("- '" + sv.getRfid() + "' (độ dài: " + sv.getRfid().length() + ")");
+        return processRfidAttendanceAndCollect(rfid).lastRecord;
+    }
+
+    private Integer resolveShiftContaining(List<CaLam> shifts, LocalTime now) {
+        if (shifts == null || now == null) return null;
+        for (CaLam shift : shifts) {
+            if (shift == null || shift.getMaCa() == null || shift.getGioBatDau() == null || shift.getGioKetThuc() == null) {
+                continue;
             }
-            
-            // Nếu không tồn tại, lưu vào bảng doc_rfid (transaction riêng) và trả lỗi nghiệp vụ
-            saveUnregisteredRfid(trimmedRfid);
-            PhieuDiemDanh response = new PhieuDiemDanh();
-            response.setRfid(null);
-            return response;
+            if (isNowInShiftWindow(now, shift.getGioBatDau(), shift.getGioKetThuc())) {
+                return shift.getMaCa();
+            }
         }
-        
-        SinhVien sinhVien = sinhVienOpt.get();
-        System.out.println("Tìm thấy sinh viên: " + sinhVien.getTenSinhVien() + " (Mã: " + sinhVien.getMaSinhVien() + ")");
-        
-        LocalDate today = LocalDate.now(APP_ZONE_ID);
-        Integer currentCa = getCurrentCa();
-        System.out.println("Ngày hiện tại: " + today + ", Ca hiện tại: " + currentCa);
+        return null;
+    }
 
-        LocalTime currentTime = LocalTime.now(APP_ZONE_ID);
+    private Integer resolveNextShift(List<CaLam> shifts, LocalTime now) {
+        if (shifts == null || shifts.isEmpty() || now == null) return null;
+        CaLam best = null;
+        long minMinutes = Long.MAX_VALUE;
+        for (CaLam shift : shifts) {
+            if (shift == null || shift.getMaCa() == null || shift.getGioBatDau() == null) continue;
+            long minutes = minutesUntilNextOccurrence(now, shift.getGioBatDau());
+            if (minutes < minMinutes) {
+                minMinutes = minutes;
+                best = shift;
+            }
+        }
+        return best != null ? best.getMaCa() : null;
+    }
 
-        // Ưu tiên xử lý bản ghi "mở" (đã check-in nhưng chưa check-out), kể cả khác ngày/khác ca.
-        List<PhieuDiemDanh> openRecords = findOpenRecordsForRfid(trimmedRfid);
-        if (openRecords != null && !openRecords.isEmpty()) {
-            PhieuDiemDanh result = splitAttendanceAcrossShifts(openRecords, sinhVien, today, currentTime, currentCa);
-            return result;
+    private Integer resolvePreviousShift(List<CaLam> shifts, LocalTime now) {
+        if (shifts == null || shifts.isEmpty() || now == null) return null;
+        CaLam best = null;
+        long minMinutesFromEnd = Long.MAX_VALUE;
+        for (CaLam shift : shifts) {
+            if (shift == null || shift.getMaCa() == null || shift.getGioKetThuc() == null) continue;
+
+            // Nếu ca qua đêm: trong mode "same-day" không chọn làm previous shift (tránh kết thúc sai ngày)
+            if (shift.getGioBatDau() != null && shift.getGioKetThuc() != null && !shift.getGioKetThuc().isAfter(shift.getGioBatDau())) {
+                continue;
+            }
+
+            LocalTime end = shift.getGioKetThuc();
+            if (end.isAfter(now)) continue;
+            long diff = Duration.between(end, now).toMinutes();
+            if (diff >= 0 && diff < minMinutesFromEnd) {
+                minMinutesFromEnd = diff;
+                best = shift;
+            }
+        }
+        return best != null ? best.getMaCa() : null;
+    }
+
+    private PhieuDiemDanh splitAttendanceAcrossShiftsSameDay(
+            PhieuDiemDanh openRecord,
+            SinhVien sinhVien,
+            LocalDate day,
+            LocalTime checkoutTime,
+            Integer checkoutCa,
+            List<CaLam> shifts
+    ) {
+        if (openRecord == null || openRecord.getNgay() == null || openRecord.getGioVao() == null || openRecord.getCa() == null) {
+            throw new IllegalStateException("Bản ghi vào không hợp lệ");
+        }
+        if (day == null || checkoutTime == null) {
+            throw new IllegalStateException("Thời điểm checkout không hợp lệ");
+        }
+        if (!day.equals(openRecord.getNgay())) {
+            // Mode mới: chỉ xử lý trong ngày
+            throw new IllegalStateException("Mode same-day: bản ghi vào không thuộc ngày hiện tại");
         }
 
-        if (currentCa == 0) {
-            System.out.println("Ngoài giờ học");
-            throw new RuntimeException("Ngoài giờ học");
+        LocalDateTime start = LocalDateTime.of(day, openRecord.getGioVao());
+        LocalDateTime end = LocalDateTime.of(day, checkoutTime);
+        if (end.isBefore(start)) {
+            throw new IllegalStateException("Checkout nhỏ hơn checkin trong cùng ngày");
         }
-        
-        // Tìm phiếu điểm danh hiện tại
-        Optional<PhieuDiemDanh> existingRecord = phieuDiemDanhRepository
-                .findByRfidAndNgayAndCa(trimmedRfid, today, currentCa);
-        
-        if (existingRecord.isPresent()) {
-            System.out.println("tồn tại record");
-            // Đã có bản ghi, cập nhật giờ ra
-            PhieuDiemDanh record = existingRecord.get();
-            if (record.getGioRa() == null) {
-                LocalTime checkoutTimeNow = LocalTime.now(APP_ZONE_ID);
-                record.setGioRa(checkoutTimeNow);
-                if (record.getMaPhongBan() == null || record.getMaPhongBan().isBlank()) {
-                    record.setMaPhongBan(sinhVien.getMaPhongBan());
-                }
-                
-                // Xác định trạng thái dựa trên thời gian ra
-                PhieuDiemDanh.TrangThaiHoc trangThai = determineCheckoutStatus(checkoutTimeNow, currentCa);
-                record.setTrangThai(trangThai);
-                
-                System.out.println("Sinh viên điểm danh ra lúc: " + checkoutTimeNow + ", Trạng thái: " + trangThai.getDescription());
 
+        // Build shift slots trong đúng ngày (bỏ ca qua đêm)
+        List<ShiftSlot> slots = new ArrayList<>();
+        for (CaLam shift : shifts) {
+            if (shift == null || shift.getMaCa() == null || shift.getGioBatDau() == null || shift.getGioKetThuc() == null) {
+                continue;
+            }
+            LocalDateTime sStart = LocalDateTime.of(day, shift.getGioBatDau());
+            LocalDateTime sEnd = LocalDateTime.of(day, shift.getGioKetThuc());
+            if (!sEnd.isAfter(sStart)) {
+                // ca qua đêm: bỏ qua trong mode same-day
+                continue;
+            }
+            slots.add(new ShiftSlot(shift.getMaCa(), sStart, sEnd));
+        }
+        slots.sort(Comparator.comparing(slot -> slot.start));
 
-                PhieuDiemDanh result = phieuDiemDanhRepository.save(record);
-                return  result;
+        List<ShiftSlot> covered = slots.stream()
+                .filter(slot -> start.isBefore(slot.end) && end.isAfter(slot.start))
+                .collect(Collectors.toList());
+
+        // Không giao ca nào -> kết thúc record gốc theo ca gần nhất
+        if (covered.isEmpty()) {
+            openRecord.setGioRa(checkoutTime);
+            openRecord.setTinhTrangDiemDanh(determineAttendanceStatus(openRecord.getGioVao(), openRecord.getCa()));
+            openRecord.setTrangThai(determineCheckoutStatus(checkoutTime, checkoutCa));
+            return phieuDiemDanhRepository.save(openRecord);
+        }
+
+        PhieuDiemDanh lastSaved = null;
+        for (ShiftSlot slot : covered) {
+            LocalDateTime segStart = start.isAfter(slot.start) ? start : slot.start;
+            LocalDateTime segEnd = end.isBefore(slot.end) ? end : slot.end;
+            if (!segEnd.isAfter(segStart)) continue;
+
+            Integer segCa = slot.maCa;
+
+            PhieuDiemDanh record;
+            if (segCa.equals(openRecord.getCa())) {
+                record = openRecord;
             } else {
-                System.out.println("Sinh viên đã điểm danh ra trong ca này");
-                PhieuDiemDanh response = new PhieuDiemDanh();
-                response.setRfid(record.getRfid());
-                response.setTenSinhVien(record.getTenSinhVien());
-                response.setCa(-99);
-                return response;
+                Optional<PhieuDiemDanh> existing = phieuDiemDanhRepository.findByRfidAndNgayAndCa(openRecord.getRfid(), day, segCa);
+                record = existing.orElseGet(PhieuDiemDanh::new);
             }
-        } else {
-            // Tạo bản ghi mới
-            PhieuDiemDanh.TrangThai tinhTrangDiemDanh = determineAttendanceStatus(currentTime, currentCa);
-            
-            PhieuDiemDanh newRecord = new PhieuDiemDanh();
-            newRecord.setRfid(trimmedRfid);
-            newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
-            newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
-            newRecord.setMaPhongBan(sinhVien.getMaPhongBan());
-            newRecord.setGioVao(currentTime);
-            newRecord.setNgay(today);
-            newRecord.setCa(currentCa);
-            newRecord.setTinhTrangDiemDanh(tinhTrangDiemDanh);
-            newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
-            
-            System.out.println("Tạo phiếu điểm danh mới: " + newRecord.getTenSinhVien() + " - Ca " + currentCa);
-            PhieuDiemDanh result = phieuDiemDanhRepository.save(newRecord);
-            return result;
+
+            record.setRfid(openRecord.getRfid());
+            record.setMaSinhVien(openRecord.getMaSinhVien() != null ? openRecord.getMaSinhVien() : sinhVien.getMaSinhVien());
+            record.setTenSinhVien(openRecord.getTenSinhVien() != null ? openRecord.getTenSinhVien() : sinhVien.getTenSinhVien());
+            record.setMaPhongBan(openRecord.getMaPhongBan() != null ? openRecord.getMaPhongBan() : sinhVien.getMaPhongBan());
+            record.setPhongHoc(openRecord.getPhongHoc());
+            record.setNgay(day);
+            record.setCa(segCa);
+            record.setGioVao(segStart.toLocalTime());
+            record.setGioRa(segEnd.toLocalTime());
+            record.setTinhTrangDiemDanh(determineAttendanceStatus(record.getGioVao(), segCa));
+            record.setTrangThai(determineCheckoutStatus(record.getGioRa(), segCa));
+
+            lastSaved = phieuDiemDanhRepository.save(record);
         }
+
+        if (lastSaved == null) {
+            throw new IllegalStateException("Không thể kết thúc điểm danh theo ca trong ngày");
+        }
+
+        if (checkoutCa != null && checkoutCa != 0) {
+            lastSaved.setCa(checkoutCa);
+        }
+        return lastSaved;
     }
 
     public PhieuDiemDanh processRfidAttendanceWithDevice(String rfid, String maThietBi) {
@@ -730,117 +1018,69 @@ public class AttendanceService {
 
         SinhVien sinhVien = sinhVienOpt.get();
 
+        // Mode mới: chỉ xử lý trong NGÀY HIỆN TẠI (tương tự RFID)
         LocalDate today = LocalDate.now(APP_ZONE_ID);
-        LocalTime currentTime = LocalTime.now(APP_ZONE_ID);
-        Integer currentCa = getCurrentCa();
+        LocalTime now = LocalTime.now(APP_ZONE_ID);
 
-        // Ưu tiên xử lý bản ghi "mở" (đã check-in nhưng chưa check-out), kể cả khác ngày/khác ca.
-        List<PhieuDiemDanh> openRecords = findOpenRecordsForMaSinhVien(normalizedMaSinhVien);
-        if (openRecords != null && !openRecords.isEmpty()) {
-            PhieuDiemDanh result = splitAttendanceAcrossShifts(openRecords, sinhVien, today, currentTime, currentCa);
+        List<CaLam> shifts = caLamRepository.findAllByOrderByMaCaAsc();
+        if (shifts == null || shifts.isEmpty()) {
+            throw new IllegalStateException("Chưa cấu hình ca làm");
+        }
 
-            if (maThietBi != null && !maThietBi.isEmpty() && result.getCa() != -99) {
-                Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
-                tb.ifPresent(thietBi -> {
-                    result.setPhongHoc(thietBi.getPhongHoc());
-                    phieuDiemDanhRepository.save(result);
-                });
+        List<PhieuDiemDanh> todayRecords = phieuDiemDanhRepository
+                .findByMaSinhVienAndNgayOrderByCaAscCreatedAtAsc(normalizedMaSinhVien, today);
+
+        PhieuDiemDanh open = todayRecords.stream()
+                .filter(r -> r != null && r.getGioRa() == null)
+                .reduce((a, b) -> b)
+                .orElse(null);
+
+        Integer inShiftCa = resolveShiftContaining(shifts, now);
+        Integer nextShiftCa = resolveNextShift(shifts, now);
+        Integer prevShiftCa = resolvePreviousShift(shifts, now);
+
+        PhieuDiemDanh result;
+        if (open == null) {
+            // check-in
+            Integer targetCa = (inShiftCa != null) ? inShiftCa : nextShiftCa;
+            if (targetCa == null) {
+                throw new IllegalStateException("Không xác định được ca làm phù hợp");
             }
 
-            // publish event
-            socketIOServer.getAllClients().forEach(client -> {
-                String message = null;
-                try {
-                    message = objectMapper.writeValueAsString(result);
-                } catch (JsonProcessingException e) {
-                    System.out.println("error convert object");
-                }
-                client.sendEvent("update-attendance", message);
-            });
-
-            return result;
-        }
-
-        if (currentCa == 0) {
-            System.out.println("Ngoài giờ học (face)");
-            throw new RuntimeException("Ngoài giờ học");
-        }
-
-        // Tránh trường hợp đã điểm danh/đã ra về rồi mà ESP32 bấm lại.
-        List<PhieuDiemDanh> sameShiftRecords =
-                phieuDiemDanhRepository.findByMaSinhVienAndNgayAndCaOrderByCreatedAtDesc(
-                        normalizedMaSinhVien, today, currentCa
-                );
-
-        if (sameShiftRecords != null && !sameShiftRecords.isEmpty()) {
-            PhieuDiemDanh record = sameShiftRecords.get(0);
-            if (record.getGioRa() == null) {
-                // check-out trong ca hiện tại (về mặt lý thuyết không cần vì openRecords đã xử lý, nhưng giữ an toàn)
-                record.setGioRa(currentTime);
-                if (record.getMaPhongBan() == null || record.getMaPhongBan().isBlank()) {
-                    record.setMaPhongBan(sinhVien.getMaPhongBan());
-                }
-
-                PhieuDiemDanh.TrangThaiHoc trangThai = determineCheckoutStatus(currentTime, currentCa);
-                record.setTrangThai(trangThai);
-                PhieuDiemDanh saved = phieuDiemDanhRepository.save(record);
-
-                if (maThietBi != null && !maThietBi.isEmpty() && saved.getCa() != -99) {
-                    Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
-                    tb.ifPresent(thietBi -> {
-                        saved.setPhongHoc(thietBi.getPhongHoc());
-                        phieuDiemDanhRepository.save(saved);
-                    });
-                }
-
-                socketIOServer.getAllClients().forEach(client -> {
-                    String message = null;
-                    try {
-                        message = objectMapper.writeValueAsString(saved);
-                    } catch (JsonProcessingException e) {
-                        System.out.println("error convert object");
-                    }
-                    client.sendEvent("update-attendance", message);
-                });
-
-                return saved;
-            } else {
-                // Sinh viên đã điểm danh ra trong ca này
+            boolean completedSameShift = todayRecords.stream()
+                    .anyMatch(r -> r != null
+                            && r.getCa() != null
+                            && r.getCa().equals(targetCa)
+                            && r.getGioVao() != null
+                            && r.getGioRa() != null);
+            if (completedSameShift) {
                 PhieuDiemDanh response = new PhieuDiemDanh();
-                response.setRfid(record.getRfid());
-                response.setTenSinhVien(record.getTenSinhVien());
+                response.setRfid("FACE:" + normalizedMaSinhVien);
+                response.setTenSinhVien(sinhVien.getTenSinhVien());
                 response.setCa(-99);
+                result = response;
+            } else {
+                PhieuDiemDanh.TrangThai tinhTrangDiemDanh = determineAttendanceStatus(now, targetCa);
+                String faceSyntheticRfid = "FACE:" + sinhVien.getMaSinhVien();
 
-                socketIOServer.getAllClients().forEach(client -> {
-                    String message = null;
-                    try {
-                        message = objectMapper.writeValueAsString(response);
-                    } catch (JsonProcessingException e) {
-                        System.out.println("error convert object");
-                    }
-                    client.sendEvent("update-attendance", message);
-                });
-
-                return response;
+                PhieuDiemDanh newRecord = new PhieuDiemDanh();
+                newRecord.setRfid(faceSyntheticRfid);
+                newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
+                newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
+                newRecord.setMaPhongBan(sinhVien.getMaPhongBan());
+                newRecord.setGioVao(now);
+                newRecord.setNgay(today);
+                newRecord.setCa(targetCa);
+                newRecord.setTinhTrangDiemDanh(tinhTrangDiemDanh);
+                newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
+                result = phieuDiemDanhRepository.save(newRecord);
             }
+        } else {
+            // check-out
+            Integer checkoutCa = (inShiftCa != null) ? inShiftCa : (prevShiftCa != null ? prevShiftCa : open.getCa());
+            if (checkoutCa == null) checkoutCa = open.getCa();
+            result = splitAttendanceAcrossShiftsSameDay(open, sinhVien, today, now, checkoutCa, shifts);
         }
-
-        // Tạo bản ghi mới (check-in)
-        PhieuDiemDanh.TrangThai tinhTrangDiemDanh = determineAttendanceStatus(currentTime, currentCa);
-        String faceSyntheticRfid = "FACE:" + sinhVien.getMaSinhVien();
-
-        PhieuDiemDanh newRecord = new PhieuDiemDanh();
-        newRecord.setRfid(faceSyntheticRfid);
-        newRecord.setMaSinhVien(sinhVien.getMaSinhVien());
-        newRecord.setTenSinhVien(sinhVien.getTenSinhVien());
-        newRecord.setMaPhongBan(sinhVien.getMaPhongBan());
-        newRecord.setGioVao(currentTime);
-        newRecord.setNgay(today);
-        newRecord.setCa(currentCa);
-        newRecord.setTinhTrangDiemDanh(tinhTrangDiemDanh);
-        newRecord.setTrangThai(PhieuDiemDanh.TrangThaiHoc.DANG_HOC); // Mặc định đang học
-
-        PhieuDiemDanh result = phieuDiemDanhRepository.save(newRecord);
 
         if (maThietBi != null && !maThietBi.isEmpty() && result.getCa() != -99) {
             Optional<ThietBi> tb = thietBiRepository.findById(maThietBi);
@@ -957,8 +1197,8 @@ public class AttendanceService {
             CaLam shift = shiftOpt.get();
             if (shift.getGioKetThuc() != null) {
                 // Giữ nguyên quy tắc cũ: ra về sớm nếu trước (end - 20 phút)
-                int earlyLeaveBuffer = 20;
-                LocalTime earlyLeaveThreshold = shift.getGioKetThuc().minusMinutes(earlyLeaveBuffer);
+               
+                LocalTime earlyLeaveThreshold = shift.getGioKetThuc();
                 if (checkoutTime.isBefore(earlyLeaveThreshold)) {
                     return PhieuDiemDanh.TrangThaiHoc.RA_VE_SOM;
                 }
@@ -1179,6 +1419,24 @@ public class AttendanceService {
         doc.setMaThietBi(trimmedDeviceId);
         doc.setPhongHoc(phongHoc);
         docRfidRepository.save(doc);
+    }
+
+    /**
+     * Cuối ngày: đánh dấu các phiếu chưa có giờ ra thành KHONG_DIEM_DANH_RA.
+     * @return số lượng phiếu đã cập nhật
+     */
+    @Transactional
+    public int finalizeMissingCheckoutForDate(LocalDate date) {
+        LocalDate targetDate = date != null ? date : LocalDate.now(APP_ZONE_ID);
+        List<PhieuDiemDanh> unclosed = phieuDiemDanhRepository.findByNgayAndGioRaIsNull(targetDate);
+        int updated = 0;
+        for (PhieuDiemDanh record : unclosed) {
+            if (record == null) continue;
+            record.setTrangThai(PhieuDiemDanh.TrangThaiHoc.KHONG_DIEM_DANH_RA);
+            phieuDiemDanhRepository.save(record);
+            updated++;
+        }
+        return updated;
     }
     
     // Getter cho repository để debug

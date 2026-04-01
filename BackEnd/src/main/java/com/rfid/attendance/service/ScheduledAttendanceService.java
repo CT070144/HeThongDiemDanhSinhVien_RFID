@@ -23,73 +23,21 @@ public class ScheduledAttendanceService {
 
     @Autowired
     private CaLamRepository caLamRepository;
+
+    @Autowired
+    private AttendanceService attendanceService;
     
+
     /**
-     * Tự động cập nhật trạng thái cho sinh viên chưa điểm danh ra
-     * Chạy mỗi 10 phút
+     * Chạy lúc 23:59 mỗi ngày:
+     * quét toàn bộ phiếu trong ngày, phiếu nào chưa có giờ ra => KHONG_DIEM_DANH_RA.
      */
-    @Scheduled(fixedRate = 300000) // 10 phút = 600,000 milliseconds
-    public void updateAttendanceStatus() {
+    @Scheduled(cron = "0 38 23 * * *", zone = "Asia/Ho_Chi_Minh")
+    public void finalizeMissingCheckoutAtEndOfDay() {
         LocalDate today = LocalDate.now();
-        LocalTime currentTime = LocalTime.now();
-        
-        // Lấy tất cả phiếu điểm danh hôm nay có trạng thái "Đang học" và chưa có giờ ra
-        List<PhieuDiemDanh> activeAttendance = phieuDiemDanhRepository
-                .findByNgayAndTrangThaiAndGioRaIsNull(today, PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
-        
-        int updatedCount = 0;
-        
-        for (PhieuDiemDanh attendance : activeAttendance) {
-            Integer ca = attendance.getCa();
-            LocalTime sessionEndTime = getSessionEndTime(ca);
-            
-            // Nếu đã quá thời gian kết thúc ca học (cộng thêm 5 phút buffer)
-            if (currentTime.isAfter(sessionEndTime.plusMinutes(5))) {
-                attendance.setTrangThai(PhieuDiemDanh.TrangThaiHoc.KHONG_DIEM_DANH_RA);
-                phieuDiemDanhRepository.save(attendance);
-                updatedCount++;
-                
-                System.out.println("Cập nhật trạng thái 'Không điểm danh ra' cho sinh viên: " + 
-                                 attendance.getTenSinhVien() + " - Ca " + ca);
-            }
-        }
-        
-        if (updatedCount > 0) {
-            System.out.println("Đã cập nhật trạng thái cho " + updatedCount + " sinh viên");
-        }
-    }
-    
-    /**
-     * Cập nhật trạng thái cho một ca học cụ thể
-     * Chạy ngay sau khi ca học kết thúc
-     */
-    @Scheduled(cron = "0 30 9,12,15,17,20 * * MON-FRI") // 9:30, 12:30, 15:30, 17:30, 20:30 từ T2-T6
-    public void updateAttendanceStatusAfterSession() {
-        LocalDate today = LocalDate.now();
-        LocalTime currentTime = LocalTime.now();
-
-        // Thay vì dựa vào "cron đúng thời điểm", luôn kiểm tra tất cả ca đang diễn ra hôm nay.
-        // Như vậy nếu admin cấu hình giờ ca thay đổi thì vẫn hoạt động đúng.
-        List<PhieuDiemDanh> activeAttendance = phieuDiemDanhRepository
-                .findByNgayAndTrangThaiAndGioRaIsNull(today, PhieuDiemDanh.TrangThaiHoc.DANG_HOC);
-
-        int updatedCount = 0;
-        for (PhieuDiemDanh attendance : activeAttendance) {
-            Integer ca = attendance.getCa();
-            LocalTime sessionEndTime = getSessionEndTime(ca);
-
-            if (currentTime.isAfter(sessionEndTime.plusMinutes(5))) {
-                attendance.setTrangThai(PhieuDiemDanh.TrangThaiHoc.KHONG_DIEM_DANH_RA);
-                phieuDiemDanhRepository.save(attendance);
-                updatedCount++;
-
-                System.out.println("Cập nhật trạng thái 'Không điểm danh ra' cho sinh viên: " +
-                        attendance.getTenSinhVien() + " - Ca " + ca);
-            }
-        }
-
-        if (updatedCount > 0) {
-            System.out.println("Đã cập nhật trạng thái cho " + updatedCount + " sinh viên (sau ca kết thúc gần nhất)");
+        int updated = attendanceService.finalizeMissingCheckoutForDate(today);
+        if (updated > 0) {
+            System.out.println("23:59 cập nhật " + updated + " phiếu chưa điểm danh ra thành KHONG_DIEM_DANH_RA");
         }
     }
     

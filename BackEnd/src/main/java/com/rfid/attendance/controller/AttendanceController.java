@@ -239,20 +239,15 @@ public class AttendanceController {
             }
 
             // Nếu verified (hoặc không gửi ảnh) => chấm công theo logic hiện có của RFID.
-            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(rfidTrim, deviceIdFinal);
+            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDeviceAndPhoto(rfidTrim, deviceIdFinal, inputImage);
             if (attendance.getRfid() == null) {
                 return ResponseEntity.ok(new RfidResponse("not_found", ""));
-            }
-
-            // Nếu ESP32 gửi ảnh => lưu ảnh chụp điểm danh vào phiếu.
-            if (inputImage != null && !inputImage.isEmpty()) {
-                attendance = attendanceService.attachAttendancePhoto(attendance, inputImage);
             }
 
             attendance.setTenSinhVien(removeAccent(attendance.getTenSinhVien()));
             return ResponseEntity.ok(new RfidResponse("found", attendance.getTenSinhVien()));
         } catch (RuntimeException e) {
-            return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
+            return ResponseEntity.badRequest().body(new RfidResponse("not_found", e.getMessage()));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
