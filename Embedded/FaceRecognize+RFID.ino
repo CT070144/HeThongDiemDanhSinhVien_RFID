@@ -122,7 +122,7 @@ unsigned long lastReadTime = 0;
 unsigned long lastTimeUpdate = 0;
 const unsigned long READ_INTERVAL = 2000; // 2 seconds between reads
 // Allow re-sending the same RFID after this cooldown (for register then attend flow)
-const unsigned long DUPLICATE_SEND_INTERVAL = 15000; // 15 seconds
+const unsigned long DUPLICATE_SEND_INTERVAL = 3000; // 2 seconds
 const unsigned long TIME_UPDATE_INTERVAL = 1000; // Update time every 1 second
 bool wifiConnected = false;
 bool isDisplayingMessage = false; // Flag to prevent time update during message display
@@ -149,9 +149,9 @@ QueueHandle_t qUI;     // UiEvent_t
 QueueHandle_t qNET;    // RfidEvent_t (network upload)
 
 // Custom parameters for WiFiManager
-WiFiManagerParameter custom_device_id("device_id", "Device ID", "DEVICE_001", 20);
-WiFiManagerParameter custom_server_url("server_url", "Server URL", "http://192.168.1.70:8080/api/attendance/rfid", 100);
-WiFiManagerParameter custom_api_key("api_key", "API Key", "", 64);
+WiFiManagerParameter custom_device_id("device_id", "Device ID", "DEVICE_999", 20);
+WiFiManagerParameter custom_server_url("server_url", "Server URL", "http://172.20.10.4:8080/api/attendance/rfid", 100);
+WiFiManagerParameter custom_api_key("api_key", "API Key", "apitestkey", 64);
  
  void setup() {
    Serial.begin(115200);
@@ -475,50 +475,43 @@ void loop() {
        Serial.println("Status: " + status);
        Serial.println("Name: " + studentName);
        
-       if (status == "found") {
-         // Hiển thị tên sinh viên khi tìm thấy
-         isDisplayingMessage = true;
-         lcd.clear();
-         lcd.setCursor(0, 0);
-         lcd.print("SUCCESSFULLY!");
-         lcd.setCursor(0, 1);
-         lcd.print(studentName);
-         beepSuccess(); // Success beep
-         delay(2000);
-         isDisplayingMessage = false;
-       } else if (status == "not_found") {
-         // Hiển thị thông báo không hợp lệ
-         isDisplayingMessage = true;
-         lcd.clear();
-         lcd.setCursor(0, 0);
-         lcd.print("CARD NOT FOUND");
-         lcd.setCursor(0, 1);
-         lcd.print("INVALID CARD");
-         beepError(); // Error beep
-         delay(3000);
-         isDisplayingMessage = false;
-       } else {
-         // Trường hợp khác hoặc không có status
-         isDisplayingMessage = true;
-         if (httpResponseCode == 200) {
-           Serial.println("Unknown status: " + status);
+       // Yêu cầu hiển thị theo spec:
+       // - HTTP 200 + status Face_required: hiển thị status lên LCD
+       // - HTTP 200 + status not_found: báo INVALID CARD
+       // - HTTP != 200: SERVER ERROR
+       isDisplayingMessage = true;
+       if (httpResponseCode == 200) {
+         if (status == "Face_required") {
+           lcd.clear();
+           lcd.setCursor(0, 0);
+           lcd.print("FACE REQUIRED");
+           beepScan();
+           delay(1500);
+         } else if (status == "not_found") {
+           lcd.clear();
+           lcd.setCursor(0, 0);
+           lcd.print("CARD NOT FOUND");
+           beepError();
+           delay(3000);
+         } else {
            lcd.clear();
            lcd.setCursor(0, 0);
            lcd.print("UNKNOWN STATUS");
            lcd.setCursor(0, 1);
-           lcd.print(status);
-         } else {
-           Serial.println("Server error with status: " + status);
-           lcd.clear();
-           lcd.setCursor(0, 0);
-           lcd.print("SERVER ERROR");
-           lcd.setCursor(0, 1);
-           lcd.print("HTTP " + String(httpResponseCode));
+           lcd.print(status.substring(0, 16));
+           beepError();
+           delay(2000);
          }
+       } else {
+         lcd.clear();
+         lcd.setCursor(0, 0);
+         lcd.print("SERVER ERROR");
+         lcd.setCursor(0, 1);
+         lcd.print("HTTP " + String(httpResponseCode));
          beepError();
          delay(2000);
-         isDisplayingMessage = false;
        }
+       isDisplayingMessage = false;
      } else {
        // JSON parsing failed
        isDisplayingMessage = true;
@@ -537,7 +530,7 @@ void loop() {
     isDisplayingMessage = true;
     Serial.println("Error sending request: " + String(httpResponseCode));
     Serial.println("HTTPClient error: " + HTTPClient::errorToString(httpResponseCode));
-    Serial.println("Ensure server is reachable at: " + serverURL);
+    Serial.println("Ensure server at: " + serverURL);
     lcd.clear();
     lcd.setCursor(0, 0);
     lcd.print("SEND ERROR");

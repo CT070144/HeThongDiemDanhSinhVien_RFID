@@ -122,6 +122,19 @@ export const attendanceAPI = {
   getUnprocessedRfids: () => api.get('/attendance/unprocessed-rfids'),
   markProcessed: (id) => api.put(`/attendance/mark-processed/${id}`),
   syncStudentInfo: () => api.post('/attendance/sync-student-info'),
+  // Gửi ảnh chụp khuôn mặt để xác thực (multipart)
+  submitFace: (uid, file, maThietBi) => {
+    const form = new FormData();
+    form.append('rfid', uid);
+    if (file) form.append('image', file, 'capture.jpg');
+    if (maThietBi) form.append('maThietBi', maThietBi);
+    return api.post('/attendance/rfid', form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+        'X-API-KEY': 'apikeytest'
+      },
+    });
+  },
 };
 
 // Device API

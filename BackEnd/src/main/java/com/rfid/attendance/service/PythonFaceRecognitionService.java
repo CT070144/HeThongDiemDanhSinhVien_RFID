@@ -41,7 +41,7 @@ public class PythonFaceRecognitionService {
 
     /**
      * Gọi Python: gửi ảnh + embedding template để so khớp 1:1.
-     * Python sẽ trả về {"status":"success"|"failed"} (kèm distance).
+     * Python sẽ trả về {"match": true|false, "distance": x, "threshold": y}.
      */
     public FaceRecognitionResult recognizeWithTemplate(
             MultipartFile image,
@@ -72,12 +72,9 @@ public class PythonFaceRecognitionService {
                 }
             };
 
-            // AI mới: /compare cần "encodings" dạng JSON list[list[float]]
-            // - Nếu templateEmbeddingJson hiện là list[float] (một encoding) thì bọc thành [templateEmbeddingJson]
-            String encodingsJson = normalizeEncodingsJson(templateEmbeddingJson);
-
             body.add("file", resource);
-            body.add("encodings", encodingsJson);
+            // Python service mới nhận field "encoding" (1 vector dạng JSON array)
+            body.add("encoding", templateEmbeddingJson);
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
             ResponseEntity<FaceRecognitionApiResponse> resp =
@@ -109,29 +106,6 @@ public class PythonFaceRecognitionService {
         return trimmedBase + trimmedPath;
     }
 
-    private String normalizeEncodingsJson(String templateEmbeddingJson) throws Exception {
-        // Parse thành JSON để detect cấu trúc
-        JsonNode node = objectMapper.readTree(templateEmbeddingJson);
-        if (node == null || !node.isArray()) {
-            return templateEmbeddingJson;
-        }
-
-        if (node.size() > 0) {
-            JsonNode first = node.get(0);
-            // list[float] => bọc lại thành list[list[float]]
-            if (first != null && first.isNumber()) {
-                // Ví dụ: [0.1, 0.2] => [[0.1, 0.2]]
-                return "[" + templateEmbeddingJson + "]";
-            }
-            // list[list[float]] => giữ nguyên
-            if (first != null && first.isArray()) {
-                return node.toString();
-            }
-        }
-
-        return templateEmbeddingJson;
-    }
-
     public static class FaceRecognitionResult {
         private final String status; // success|failed|not_found
         private final Double distance;
@@ -154,6 +128,7 @@ public class PythonFaceRecognitionService {
     public static class FaceRecognitionApiResponse {
         private Boolean match;
         private Double distance;
+        private Double threshold;
 
         public Boolean getMatch() {
             return match;
@@ -169,6 +144,14 @@ public class PythonFaceRecognitionService {
 
         public void setDistance(Double distance) {
             this.distance = distance;
+        }
+
+        public Double getThreshold() {
+            return threshold;
+        }
+
+        public void setThreshold(Double threshold) {
+            this.threshold = threshold;
         }
     }
 }

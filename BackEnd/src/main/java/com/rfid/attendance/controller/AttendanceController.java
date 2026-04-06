@@ -5,6 +5,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rfid.attendance.entity.DocRfid;
 import com.rfid.attendance.entity.PhieuDiemDanh;
+import com.rfid.attendance.repository.DocRfidRepository;
+import com.rfid.attendance.repository.ThietBiRepository;
 import com.rfid.attendance.service.PythonFaceEncodingService;
 import com.rfid.attendance.service.AttendanceService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,10 +35,15 @@ public class AttendanceController {
 
     @Autowired
     private PythonFaceEncodingService pythonFaceEncodingService;
+    
+    @Autowired
+    private DocRfidRepository docRfidRepository;
     @Autowired
     ObjectMapper objectMapper;
     @Autowired
     private SocketIOServer socketIOServer;
+    @Autowired
+    private ThietBiRepository thietBiRepository;
 
 
     @GetMapping
@@ -166,16 +173,74 @@ public class AttendanceController {
     @PostMapping(value = "/rfid", consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> processRfidAttendance(@RequestBody RfidRequest request) {
         try {
-            System.out.println(request.getRfid());
-            System.out.println(request.getMaThietBi());
-            PhieuDiemDanh attendance = attendanceService.processRfidAttendanceWithDevice(request.getRfid(), request.getMaThietBi());
-            String tensv = removeAccent(attendance.getTenSinhVien());
-            attendance.setTenSinhVien(tensv);
-            System.out.println(attendance.getNgay()+"ngày chấm công");
-            if (attendance.getRfid() == null) {
-                return ResponseEntity.ok(new RfidResponse("not_found", ""));
+            String rfid = request.getRfid() != null ? request.getRfid().trim() : "";
+            String maThietBi = request.getMaThietBi() != null ? request.getMaThietBi().trim() : null;
+            if (rfid.isBlank()) {
+                return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));
             }
-            return ResponseEntity.ok(new RfidResponse("found", attendance.getTenSinhVien()));
+
+            // Kiểm tra RFID tồn tại và có faceid không trước khi yêu cầu chụp ảnh
+            var svOpt = attendanceService.getSinhVienRepository().findByRfid(rfid);
+            if (svOpt.isEmpty()) {
+                // Lưu RFID lạ vào bảng docrfid (tránh trùng do rfid unique)
+                String viTri = null;
+                try {
+                    if (maThietBi != null && !maThietBi.isBlank()) {
+                        var tbOpt = thietBiRepository.findById(maThietBi);
+                        if (tbOpt.isPresent()) {
+                            viTri = tbOpt.get().getPhongHoc();
+                        }
+                    }
+                    if (!docRfidRepository.existsByRfid(rfid)) {
+                        DocRfid doc = new DocRfid(rfid);
+                        doc.setMaThietBi(maThietBi);
+                        docRfidRepository.save(doc);
+                    }
+                } catch (Exception ex) {
+                    // Không chặn flow nếu lỗi lưu (ví dụ trùng unique do race)
+                    System.out.println("Không thể lưu docrfid: " + ex.getMessage());
+                }
+
+                // Publish event invalid-rfid để frontend thông báo
+                String payloadToSend;
+                try {
+                    payloadToSend = objectMapper.writeValueAsString(Map.of(
+                            "rfid", rfid,
+                            "maThietBi", maThietBi,
+                            "requestedAt", java.time.Instant.now().toString(),
+                            "viTri", viTri
+                    ));
+                } catch (JsonProcessingException ex) {
+                    payloadToSend = rfid; // fallback đơn giản
+                }
+                final String payloadFinal = payloadToSend;
+                socketIOServer.getAllClients().forEach(client -> client.sendEvent("invalid-rfid", payloadFinal));
+                return ResponseEntity.ok(new RfidResponse("not_found", ""));
+
+            }
+            var sv = svOpt.get();
+            if (sv.getFaceid() == null || sv.getFaceid().isBlank()) {
+                return ResponseEntity.ok(new RfidResponse("faceid_not_found", ""));
+            }
+
+            // Yêu cầu web mở camera chụp ảnh và so khớp (qua Socket.IO)
+            // Frontend cần lắng nghe event "request-face-capture"
+            String payloadToSend;
+            try {
+                payloadToSend = objectMapper.writeValueAsString(Map.of(
+                        "rfid", rfid,
+                        "maThietBi", maThietBi,
+                        "requestedAt", java.time.Instant.now().toString()
+                ));
+            } catch (JsonProcessingException ex) {
+                payloadToSend = rfid; // fallback đơn giản
+            }
+            final String payloadFinal = payloadToSend;
+            System.out.println(payloadFinal.toString()+"hehe");
+            socketIOServer.getAllClients().forEach(client -> client.sendEvent("request-face-capture", payloadFinal));
+
+            // Trả về trạng thái yêu cầu xác thực khuôn mặt
+            return ResponseEntity.ok(new RfidResponse("Face_required", ""));
         } catch (RuntimeException e) {
             System.out.println(e.getMessage());
             return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));

@@ -45,7 +45,7 @@ public class PythonFaceEncodingService {
      * - files: ảnh khuôn mặt mẫu (upload nhiều ảnh)
      *
      * Response:
-     * { "encodings": [[...], [...]] }
+     * { "encoding": [...], "dimension": 128, "count": 3 }
      */
     public String encodeFaces(List<MultipartFile> files) {
         if (files == null || files.isEmpty()) {
@@ -77,12 +77,12 @@ public class PythonFaceEncodingService {
                     restTemplate.exchange(url, HttpMethod.POST, requestEntity, EncodeApiResponse.class);
 
             EncodeApiResponse payload = resp.getBody();
-            if (payload == null || payload.getEncodings() == null) {
+            if (payload == null || payload.getEncoding() == null) {
                 throw new RuntimeException("Python trả về encoding rỗng");
             }
 
-            // Lưu dạng JSON array string (list[list[float]]) để gửi lại cho /compare.
-            return objectMapper.writeValueAsString(payload.getEncodings());
+            // Python mới trả về 1 vector duy nhất (average pooled). Lưu dạng JSON array string: [float,...]
+            return objectMapper.writeValueAsString(payload.getEncoding());
         } catch (JsonProcessingException e) {
             throw new RuntimeException("Không thể parse encoding từ Python", e);
         } catch (IOException e) {
@@ -101,14 +101,14 @@ public class PythonFaceEncodingService {
      * POST {baseUrl}/compare
      * Body multipart/form-data:
      * - file: ảnh input (ESP32 đẩy lên)
-     * - encodings: Text dạng "[[0.1,0.2,...],[...]]"
+     * - encoding: Text dạng "[0.1,0.2,...]"
      */
     public CompareResult compareFace(MultipartFile inputImage, String encodingJson) {
         if (inputImage == null || inputImage.isEmpty()) {
             throw new IllegalArgumentException("Thiếu file ảnh để compare");
         }
         if (encodingJson == null || encodingJson.isBlank()) {
-            throw new IllegalArgumentException("Thiếu encodings (faceid) để compare");
+            throw new IllegalArgumentException("Thiếu encoding (faceid) để compare");
         }
 
         String url = buildUrl(comparePath);
@@ -121,7 +121,7 @@ public class PythonFaceEncodingService {
             ByteArrayResource resource = toByteArrayResource(inputImage);
 
             body.add("file", resource);
-            body.add("encodings", encodingJson);
+            body.add("encoding", encodingJson);
 
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
             ResponseEntity<CompareApiResponse> resp =
@@ -187,14 +187,32 @@ public class PythonFaceEncodingService {
     }
 
     public static class EncodeApiResponse {
-        private List<List<Double>> encodings;
+        private List<Double> encoding;
+        private Integer dimension;
+        private Integer count;
 
-        public List<List<Double>> getEncodings() {
-            return encodings;
+        public List<Double> getEncoding() {
+            return encoding;
         }
 
-        public void setEncodings(List<List<Double>> encodings) {
-            this.encodings = encodings;
+        public void setEncoding(List<Double> encoding) {
+            this.encoding = encoding;
+        }
+
+        public Integer getDimension() {
+            return dimension;
+        }
+
+        public void setDimension(Integer dimension) {
+            this.dimension = dimension;
+        }
+
+        public Integer getCount() {
+            return count;
+        }
+
+        public void setCount(Integer count) {
+            this.count = count;
         }
     }
 
@@ -205,6 +223,7 @@ public class PythonFaceEncodingService {
     public static class CompareApiResponse {
         private Boolean match;
         private Double distance;
+        private Double threshold;
         private String error;
 
         public Boolean getMatch() {
@@ -221,6 +240,14 @@ public class PythonFaceEncodingService {
 
         public void setDistance(Double distance) {
             this.distance = distance;
+        }
+
+        public Double getThreshold() {
+            return threshold;
+        }
+
+        public void setThreshold(Double threshold) {
+            this.threshold = threshold;
         }
 
         public String getError() {

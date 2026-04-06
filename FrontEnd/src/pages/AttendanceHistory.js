@@ -772,7 +772,7 @@ const AttendanceHistory = () => {
         centered
       >
         <Modal.Header closeButton className="text-white" style={{ backgroundColor: '#212529' }}>
-          <Modal.Title>Chi tiết phiếu điểm danh</Modal.Title>
+          <Modal.Title>Chi tiết phiếu chấm công</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {attendanceDetailLoading ? (
@@ -788,7 +788,7 @@ const AttendanceHistory = () => {
                 {attendanceDetail.photoDataUrl ? (
                   <img
                     src={attendanceDetail.photoDataUrl}
-                    alt="Ảnh điểm danh"
+                    alt="Ảnh chấm công"
                     style={{
                       width: 160,
                       height: 200,

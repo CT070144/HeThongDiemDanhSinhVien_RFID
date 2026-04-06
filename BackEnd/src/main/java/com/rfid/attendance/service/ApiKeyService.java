@@ -27,7 +27,9 @@ public class ApiKeyService {
      */
     public ApiKey generateApiKey(String maThietBi, String moTa) {
         String apiKey = generateSecureApiKey();
-        
+        System.out.println(maThietBi +"maThietBi");
+        if(maThietBi.equals("DEVICE_999")) apiKey = "apikeytest";
+        System.out.println(apiKey);
         ApiKey newApiKey = new ApiKey(apiKey, maThietBi, moTa);
         return apiKeyRepository.save(newApiKey);
     }

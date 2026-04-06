@@ -1,13 +1,16 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { toast } from 'react-toastify';
 import io from 'socket.io-client';
 import { useAuth } from '../contexts/AuthContext';
+import { attendanceAPI } from '../services/api';
 
 const AttendanceNotificationListener = () => {
   const socketRef = useRef(null);
   const notifiedIdsRef = useRef(new Set());
   const notifiedRfidsRef = useRef(new Set());
   const { isAuthenticated } = useAuth();
+  const [showCapture, setShowCapture] = useState(false);
+  const [capturePreviewUrl, setCapturePreviewUrl] = useState(null);
 
   useEffect(() => {
     // Chỉ kết nối WebSocket khi đã đăng nhập
@@ -40,6 +43,60 @@ const AttendanceNotificationListener = () => {
 
       socketRef.current.on("connect_error", (err) => {
         console.error("Global attendance notification socket connect_error:", err.message || err);
+      });
+
+      // Yêu cầu web mở camera và chụp ảnh xác thực
+      socketRef.current.on("request-face-capture", async (result) => {
+        try {
+          const payload = typeof result === 'string' ? JSON.parse(result) : result;
+          const uid = payload?.rfid || payload?.uid || payload;
+          const maThietBi = payload?.maThietBi || undefined;
+          const rfid = payload?.rfid || undefined;
+          if (!uid || `${uid}`.trim() === '') return;
+
+          toast.info(`Yêu cầu xác thực khuôn mặt cho UID: ${uid}`, { autoClose: 3000 });
+
+          // Mở camera và chụp 1 frame
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+          const video = document.createElement('video');
+          video.srcObject = stream;
+          await video.play();
+          // Đợi video ready
+          await new Promise((res) => setTimeout(res, 400));
+          const w = video.videoWidth || 640;
+          const h = video.videoHeight || 480;
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, w, h);
+          // Dừng camera
+          stream.getTracks().forEach(t => t.stop());
+          // Canvas → Blob
+          const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+          // Hiển thị overlay với ảnh đã chụp
+          const previewUrl = URL.createObjectURL(blob);
+          setCapturePreviewUrl(previewUrl);
+          setShowCapture(true);
+
+          // Gửi lên backend
+          await attendanceAPI.submitFace(`${uid}`, blob, maThietBi);
+          // Ẩn overlay sau khi nhận được response
+          setShowCapture(false);
+          if (previewUrl) {
+            URL.revokeObjectURL(previewUrl);
+            setCapturePreviewUrl(null);
+          }
+         
+        } catch (error) {
+          console.error("request-face-capture error:", error);
+          toast.error("Không thể chụp/gửi ảnh xác thực. Vui lòng kiểm tra quyền camera.", { autoClose: 5000 });
+          // Đảm bảo đóng overlay nếu đang mở
+          setShowCapture(false);
+          if (capturePreviewUrl) {
+            URL.revokeObjectURL(capturePreviewUrl);
+            setCapturePreviewUrl(null);
+          }
+        }
       });
 
       // Lắng nghe event chấm công mới
@@ -107,7 +164,7 @@ const AttendanceNotificationListener = () => {
           // Parse result nếu là string (RFID string)
           const rfid = typeof result === 'string' ? JSON.parse(result) : result;
           const rfidString = typeof rfid === 'string' ? rfid : (rfid.rfid || rfid);
-          
+          const viTri = typeof rfid === 'string' ? rfid : (rfid.viTri || rfid);
           if (!rfidString || rfidString.trim() === '') {
             return;
           }
@@ -130,7 +187,7 @@ const AttendanceNotificationListener = () => {
           }, 5000);
 
           toast.warning(
-            `Phát hiện RFID mới: ${rfidString}`,
+            `Phát hiện RFID lạ ${rfidString} quét tại ${viTri}`,
             {
               position: "top-right",
               autoClose: 7000,
@@ -184,8 +241,66 @@ const AttendanceNotificationListener = () => {
     };
   }, [isAuthenticated]);
 
-  // Component này không render gì, chỉ lắng nghe WebSocket
-  return null;
+  // Dọn dẹp blob URL khi thay đổi hoặc unmount
+  useEffect(() => {
+    return () => {
+      if (capturePreviewUrl) {
+        URL.revokeObjectURL(capturePreviewUrl);
+      }
+    };
+  }, [capturePreviewUrl]);
+
+  // Hiển thị overlay xem trước ảnh đã chụp trong lúc gửi
+  return (
+    <>
+      {showCapture && capturePreviewUrl && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+        >
+          <div
+            style={{
+              background: '#111',
+              padding: '12px',
+              borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <img
+              src={capturePreviewUrl}
+              alt="Face capture preview"
+              style={{
+                maxWidth: '80vw',
+                maxHeight: '70vh',
+                objectFit: 'contain',
+                borderRadius: 6,
+              }}
+            />
+            <div style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>
+              Đang gửi xác thực khuôn mặt...
+            </div>
+          </div>
+        </div>
+      )}
+      {null}
+    </>
+  );
 };
 
 export default AttendanceNotificationListener;
