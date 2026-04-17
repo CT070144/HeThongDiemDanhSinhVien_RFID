@@ -1,91 +1,266 @@
-HƯỚNG DẪN CÀI ĐẶT VÀ SỬ DỤNG HỆ THỐNG CHẤM CÔNG BẰNG KHUÔN MẶT VÀ RFID SỬ DỤNG HỆ ĐIỀU HÀNH FREERTOS
-1. Tổng quan hệ thống
-Hệ thống chấm công RFID được cấu thành từ 4 phần chính:
-•	BackEnd: Là ứng dụng Spring Boot đảm nhiệm việc xử lý API, xác thực, chấm công và kết nối với cơ sở dữ liệu MySQL.
-•	FrontEnd: Là ứng dụng ReactJS cung cấp giao diện quản trị và theo dõi chấm công.
-•	FaceRecognition: Là dịch vụ Python Flask dùng để mã hóa và so khớp khuôn mặt.
-•	Embedded: Là chương trình trên ESP32 dùng để đọc thẻ RFID, gửi dữ liệu lên Backend và hiển thị trạng thái.
-Kiến trúc hoạt động tổng quát diễn ra theo 4 bước:
-1.	ESP32 tiến hành đọc thẻ RFID và gửi dữ liệu rfid + maThietBi lên máy chủ Backend.
-2.	Backend tiếp nhận, xác định thông tin nhân viên, ca làm và trạng thái chấm công.
-3.	Hệ thống yêu cầu xác minh khuôn mặt, Backend sẽ giao tiếp với dịch vụ FaceRecognition.
-4.	Cuối cùng, FrontEnd hiển thị thông tin, bảng điều khiển và lịch sử chấm công theo thời gian thực.
-2. Yêu cầu môi trường
-Phần mềm cần thiết:
-•	Cần có Docker Desktop và docker compose nếu muốn khởi chạy nhanh toàn bộ hệ thống.
-•	Cần có Java 17+ để chạy Backend thủ công.
-•	Cần có Node.js 16+ và npm để chạy FrontEnd thủ công.
-•	Cần có Python 3.10+ để chạy dịch vụ FaceRecognition.
-•	Cần có Arduino IDE để nạp mã nguồn cho ESP32.
-•	Cần có Git để sao chép (clone) và cập nhật mã nguồn.
-Phần cứng cần thiết:
-•	Các linh kiện chính bao gồm: ESP32 Dev Module, RC522 RFID, LCD1602 I2C, Buzzer
-•	Phụ kiện đi kèm gồm có: Dây cắm (jump), breadboard, cáp USB nạp ESP32, thẻ RFID để thử nghiệm.
-•	Cần trang bị thêm Webcam/camera để sử dụng chức năng nhận diện khuôn mặt.
-3. Cấu trúc thư mục liên quan
-Các thư mục và tệp tin quan trọng trong dự án bao gồm:
-•	Thư mục BackEnd.
-•	Thư mục FrontEnd.
-•	Thư mục FaceRecognition.
-•	Tệp mã nguồn nhúng Embedded/FaceRecognize+RFID.ino.
-•	Tệp cơ sở dữ liệu ScriptDatabase/rfid_attendance_system_backup.sql.
-•	Tệp cấu hình Docker docker-compose.yml.
-4. Hướng dẫn triển khai nhanh bằng Docker Compose
-Đây là phương pháp được ưu tiên nếu người dùng muốn khởi chạy nhanh Backend, FrontEnd và MySQL.
-1.	Mở terminal tại thư mục gốc của dự án (ví dụ: cd D:\KMALearn\RFID_Project).
-2.	Khởi động hệ thống bằng lệnh: docker compose up --build.
-Thông tin các container được cấu hình sẵn:
-•	mysql: Sử dụng MySQL 8.0, ánh xạ cổng 3307:3306.
-•	backend: Chạy Spring Boot, ánh xạ cổng 8080:8080 và socket 8099:8099.
-•	frontend: Chạy ReactJS, ánh xạ cổng 3000:3000.
-•	face-recognize: Chạy Python, ánh xạ cổng 5000:5000
-Thông tin Cơ sở dữ liệu:
-•	Tệp docker-compose.yml sẽ tự động nạp script từ ScriptDatabase/rfid_attendance_system_backup.sql.
-•	Tên cơ sở dữ liệu được tạo mặc định là rfid_attendance_system.
-•	Tài khoản MySQL: User là username, Password là 1, Root password là 1.
-5. Cài đặt và vận hành thủ công các dịch vụ
-5.1. Cài đặt Backend thủ công
-1.	Chuẩn bị Database: Có thể dùng Docker Compose để tạo MySQL hoặc tự tạo và import tệp SQL bằng lệnh mysql -u root -p < ScriptDatabase/rfid_attendance_system_backup.sql.
-2.	Cấu hình: Cần tạo tệp application.properties trong thư mục BackEnd/src/main/resources để cấu hình chuỗi kết nối MySQL (spring.datasource.url, username, password), cổng server (8080), khóa JWT (jwt.secret), và các đường dẫn kết nối đến dịch vụ Python FaceRecognition.
-3.	Khởi chạy: Di chuyển vào thư mục BackEnd và chạy lệnh .\mvnw spring-boot:run hoặc mvn spring-boot:run.
-5.2. Cài đặt FrontEnd thủ công
-1.	Di chuyển vào thư mục FrontEnd và chạy lệnh npm install để cài đặt các thư viện phụ thuộc.
-2.	Chạy lệnh npm start để khởi động giao diện.
-3.	Có thể tạo tệp .env để cấu hình biến môi trường REACT_APP_API_URL (mặc định là http://localhost:8080/api) và REACT_APP_SOCKET_URL (mặc định là http://localhost:8099).
-5.3. Cài đặt dịch vụ FaceRecognition
-1.	Tạo môi trường ảo Python trong thư mục FaceRecognition bằng lệnh python -m venv .venv và kích hoạt nó.
-2.	Cài đặt các thư viện cần thiết bằng lệnh pip install flask face-recognition numpy opencv-python.
-3.	Chạy dịch vụ bằng lệnh python face_recognition.py (dịch vụ sẽ chạy tại http://localhost:5000).
-6. Cài đặt phần cứng ESP32
-Yêu cầu thư viện trên Arduino IDE:
-•	Cần cài đặt các thư viện: MFRC522, ArduinoJson, LiquidCrystal_I2C, và WiFiManager.
-•	Cần đảm bảo chọn đúng Board là ESP32 Dev Module và cổng COM tương ứng.
-Sơ đồ kết nối phần cứng:
-•	RC522 sang ESP32: Chân VCC nối VIN hoặc 3.3V, GND nối GND, RST nối GPIO 4, SS nối GPIO 5, MOSI nối GPIO 23, MISO nối GPIO 19, SCK nối GPIO 18.
-•	LCD1602 I2C sang ESP32: Chân VCC nối 3.3V hoặc 5V, GND nối GND, SDA nối GPIO 21, SCL nối GPIO 22.
-•	Buzzer sang ESP32: Chân dương (+) nối GPIO 15, chân âm (-) nối GND.
-•	Nút nhấn sang ESP32: Một đầu nối GPIO 0, đầu còn lại nối GND.
-Cấu hình và Nạp mã nguồn:
-•	Biến serverURL trong code cần trỏ đúng địa chỉ IP LAN của máy tính chạy Backend
-•	Lần đầu khởi động, thiết bị sẽ phát WiFi có tên RFID-Device (mật khẩu: 12345678) để người dùng truy cập cổng thông tin cấu hình WiFi, Device ID và Server URL.
-7. Trình tự khởi động và Sử dụng cơ bản
-Trình tự khởi động khuyến nghị:
-1.	Khởi động MySQL.
-2.	Khởi động dịch vụ FaceRecognition.
-3.	Khởi động BackEnd.
-4.	Khởi động FrontEnd.
-5.	Nạp và chạy thiết bị ESP32.
-Quy trình sử dụng cơ bản:
-1.	Đăng nhập vào FrontEnd (http://localhost:3000) bằng tài khoản quản trị.
-2.	Thêm thiết bị và thông tin nhân viên vào hệ thống.
-3.	Gán mã RFID cho nhân viên.
-4.	Tải ảnh lên để tạo faceid nhận diện khuôn mặt.
-5.	Khởi động ESP32
-6.	Khi nhân viên quẹt thẻ, hệ thống sẽ ghi nhận chấm công và cập nhật thời gian thực lên giao diện Dashboard.
-8. Kiểm tra và khắc phục sự cố
-•	FrontEnd không truy cập được: Kiểm tra trạng thái tiến trình npm start hoặc container frontend, đảm bảo cổng 3000 đang hoạt động.
-•	FrontEnd không gọi được API: Xác minh Backend đang chạy tại cổng 8080 và kiểm tra lại các URL trong biến môi trường.
-•	ESP32 quẹt thẻ nhưng không gửi dữ liệu: Kiểm tra cấu hình serverURL, đảm bảo ESP32 và máy chủ chung mạng LAN, và theo dõi log trên Serial Monitor.
-•	Backend báo lỗi FaceRecognition: Đảm bảo dịch vụ Python đang chạy tại http://localhost:5000 và hình ảnh gửi lên là hợp lệ.
-•	Backend không kết nối được MySQL: Kiểm tra tài khoản, mật khẩu, tên cơ sở dữ liệu. Nếu dùng Docker Compose, lưu ý MySQL được ánh xạ ra cổng 3307 của máy host.
+# Hệ thống chấm công RFID + FaceRecognition (ESP32 + Web)
 
+## 📋 Tổng quan
+
+Hệ thống chấm công tự động sử dụng **RFID (RC522) + ESP32** kết hợp **Web Admin (ReactJS)** và **Backend (Spring Boot + MySQL)**. Khi nhân viên quẹt thẻ, hệ thống ghi nhận **giờ vào/giờ ra**, xác định **ca làm**, cập nhật **realtime** lên giao diện. Với nhân viên đã đăng ký khuôn mặt, hệ thống có thể yêu cầu **xác thực khuôn mặt** trước khi chấm công.
+
+Hệ thống gồm 4 phần chính:
+
+- `BackEnd`: Spring Boot xử lý API, bảo mật, chấm công, realtime Socket.IO, lưu trữ ảnh chấm công.
+- `FrontEnd`: ReactJS giao diện quản trị, dashboard, lịch sử chấm công.
+- `FaceRecognition`: Python Flask dùng để **encode** và **compare** khuôn mặt.
+- `Embedded`: ESP32 đọc thẻ RFID, gửi dữ liệu lên Backend, hiển thị trạng thái trên LCD.
+
+### ✨ Tính năng chính
+
+- 🎯 **Chấm công vào/ra** theo RFID, tự xác định ca làm theo thời gian
+- 🔐 **Bảo mật**: JWT cho người dùng web; **API Key** cho thiết bị ESP32
+- 🧑‍💻 **Quản lý nhân viên** (RFID, thông tin cơ bản) + **đăng ký faceid** (vector khuôn mặt)
+- 🏢 **Quản lý thiết bị** (mã thiết bị, vị trí/phòng)
+- 📡 **Realtime** thông báo qua Socket.IO (cập nhật phiếu chấm công, cảnh báo thẻ lạ, yêu cầu chụp khuôn mặt)
+- 📁 **Export Excel** báo cáo chấm công (tổng hợp + chi tiết)
+
+## 🏗️ Kiến trúc hệ thống
+
+```
+┌─────────────────┐    WiFi    ┌─────────────────┐    HTTP    ┌─────────────────┐
+│   ESP32 + RFID  │ ────────── │  Spring Boot    │ ────────── │   ReactJS       │
+│   + LCD1602     │            │  Backend        │            │   Frontend      │
+│   + API Key     │            │  + Security     │            │   + Dashboard   │
+└─────────────────┘            └─────────────────┘            └─────────────────┘
+                                        │
+                                        │ JDBC
+                                        ▼
+                                 ┌─────────────────┐
+                                 │   MySQL         │
+                                 │   Database      │
+                                 └─────────────────┘
+ FaceRecognition (Python) ↔ Backend
+```
+
+### 🔧 Thành phần phần cứng
+
+- **ESP32 Development Board**: Vi điều khiển chính
+- **RC522 RFID Module**: Module đọc thẻ RFID
+- **LCD1602 I2C**: Màn hình hiển thị trạng thái
+- **Buzzer**: Còi báo âm thanh
+- **Button**: Nút cấu hình/reset (theo chương trình ESP32)
+
+## 🛠️ Công nghệ sử dụng
+
+### Backend Technologies
+- **Spring Boot 3.2.0** - Main framework
+- **Spring Data JPA** - Database ORM với lazy loading
+- **Spring Security** - Authentication & Authorization
+- **JWT (JSON Web Token)** - Token-based authentication
+- **Apache POI** - Excel file processing
+- **MySQL 8.0** - Database với timezone Asia/Ho_Chi_Minh
+- **Maven** - Dependency management
+- **Socket.IO (netty-socketio)** - Realtime communication
+
+### Frontend Technologies
+- **React.js 18** - UI framework với hooks
+- **React Router 6** - Client-side routing
+- **Bootstrap 5** - CSS framework
+- **Chart.js & react-chartjs-2** - Data visualization
+- **Axios** - HTTP client với interceptors
+- **React Toastify** - Notifications
+- **xlsx** - Excel file handling
+- **React DatePicker** - Date selection
+
+### Hardware Technologies
+- **ESP32** - Microcontroller với WiFi
+- **RC522** - RFID reader module
+- **LCD1602 I2C** - 16x2 display
+- **Arduino IDE** - Development environment
+
+### Development Tools
+- **Java 17+** - Backend development
+- **Node.js 16+** - Frontend development
+- **Git** - Version control
+- **Arduino IDE** - Embedded development
+
+## 🚀 Cài đặt và chạy dự án
+
+### 1) Yêu cầu hệ thống
+
+- **Java 17+**
+- **Node.js 16+**
+- **MySQL 8.0+** (hoặc dùng Docker Compose)
+- **Python 3.10+** (nếu dùng FaceRecognition)
+- **Arduino IDE** với ESP32 board package
+- **Git**
+
+### 2) Chạy nhanh bằng Docker Compose (khuyến nghị)
+
+Mở terminal tại thư mục dự án và chạy:
+
+```bash
+docker compose up --build
+```
+
+Các service trong `docker-compose.yml`:
+
+- `mysql`: `3307:3306`
+- `backend`: `8080:8080` và socket `8099:8099`
+- `frontend`: `3000:3000`
+
+Truy cập:
+
+- FrontEnd: `http://localhost:3000`
+- BackEnd API: `http://localhost:8080`
+- Socket realtime: `http://localhost:8099`
+- MySQL host port: `localhost:3307`
+
+Database được nạp từ script:
+
+- `ScriptDatabase/rfid_attendance_system_backup.sql`
+
+> Lưu ý: Docker Compose hiện **chưa** chạy `FaceRecognition` (Python). Nếu cần xác thực khuôn mặt, hãy chạy theo mục “FaceRecognition”.
+
+### 3) Chạy thủ công Backend
+
+- Import DB (nếu không dùng Docker Compose):
+
+```bash
+mysql -u root -p < ScriptDatabase/rfid_attendance_system_backup.sql
+```
+
+- Chạy Backend:
+
+```bash
+cd BackEnd
+./mvnw spring-boot:run
+```
+
+### 4) Chạy thủ công FrontEnd
+
+```bash
+cd FrontEnd
+npm install
+npm start
+```
+
+Biến môi trường (tuỳ chọn) trong `FrontEnd/.env`:
+
+```env
+REACT_APP_API_URL=http://localhost:8080/api
+REACT_APP_SOCKET_URL=http://localhost:8099
+```
+
+### 5) FaceRecognition (Python, tuỳ chọn)
+
+File: `FaceRecognition/face_recognition.py`
+
+- Tạo môi trường & cài thư viện:
+
+```bash
+cd FaceRecognition
+python -m venv .venv
+# Windows:
+.\.venv\Scripts\activate
+pip install flask face-recognition numpy opencv-python
+```
+
+- Chạy service:
+
+```bash
+python face_recognition.py
+```
+
+Service chạy tại `http://localhost:5000` với 2 endpoint:
+
+- `POST /encode` (multipart field `files`): trả vector `encoding` 128 chiều
+- `POST /compare` (multipart field `file`, form field `encoding`): trả `match/distance`
+
+### 6) ESP32 (Embedded)
+
+File chương trình: `Embedded/FaceRecognize+RFID.ino`
+
+Thư viện Arduino cần cài:
+
+- `MFRC522`
+- `ArduinoJson`
+- `LiquidCrystal_I2C`
+- `WiFiManager`
+
+Kết nối phần cứng theo code:
+
+```
+RC522 RFID Module:
+VCC  ->  VIN hoặc 3.3V
+GND  ->  GND
+RST  ->  GPIO 4
+SS   ->  GPIO 5
+MOSI ->  GPIO 23
+MISO ->  GPIO 19
+SCK  ->  GPIO 18
+
+LCD1602 I2C:
+VCC  ->  3.3V hoặc 5V
+GND  ->  GND
+SDA  ->  GPIO 21
+SCL  ->  GPIO 22
+
+Buzzer -> GPIO 15
+Button -> GPIO 0 (INPUT_PULLUP)
+```
+
+Thiết bị hỗ trợ cấu hình WiFi + `Device ID` + `Server URL` + `API Key` qua WiFiManager:
+
+- AP: `RFID-Device`
+- Mật khẩu: `12345678`
+
+Quan trọng:
+
+- `serverURL` phải trỏ đúng IP LAN của máy chạy Backend (không dùng `localhost`)
+- `API Key` phải khớp với API key đang active của thiết bị (Backend)
+
+## 📱 Sử dụng hệ thống
+
+### Luồng cơ bản
+
+1. Chạy MySQL + Backend + FrontEnd (và FaceRecognition nếu dùng).
+2. Đăng nhập web admin tại `http://localhost:3000`.
+3. Tạo/cập nhật **thiết bị** (mã thiết bị, vị trí/phòng).
+4. Tạo/cập nhật **nhân viên** và gán RFID.
+5. (Tuỳ chọn) Upload ảnh để tạo `faceid`.
+6. Nhân viên quẹt thẻ RFID trên ESP32 → hệ thống ghi nhận chấm công và cập nhật realtime.
+
+### Realtime & xác thực khuôn mặt
+
+- Khi Backend yêu cầu xác thực khuôn mặt, FrontEnd sẽ nhận event `request-face-capture` và chụp 1 frame từ camera để gửi lên Backend.
+- Nếu trình duyệt không có quyền camera, hệ thống sẽ hiển thị thông báo lỗi quyền camera.
+
+## 🔌 API (tóm tắt)
+
+- Auth: `POST /api/auth/login`
+- Chấm công: `POST /api/attendance/rfid` (JSON từ ESP32 hoặc multipart khi kèm ảnh)
+- Lịch sử (phân trang): `GET /api/attendance/paged`
+- Thiết bị: `/api/thietbi/*`
+- Nhân viên: `/api/sinhvien/*`
+
+## 🔧 Troubleshooting
+
+### 🚫 ESP32 không kết nối WiFi
+- Kiểm tra ESP32 và máy chủ Backend cùng mạng LAN/WiFi
+- Kiểm tra cấu hình `serverURL` trên thiết bị
+- Xem log trong Serial Monitor (baud 115200)
+
+### 🗄️ Backend không kết nối database
+- Kiểm tra MySQL đang chạy
+- Nếu dùng Docker Compose: MySQL host port là `3307`
+
+### 🌐 Frontend không gọi được API
+- Kiểm tra backend đang chạy tại port 8080
+- Kiểm tra JWT token có hợp lệ không
+- Kiểm tra `REACT_APP_API_URL`, `REACT_APP_SOCKET_URL`
+
+### 📡 RFID không đọc được thẻ
+- Kiểm tra kết nối phần cứng RC522
+- Đảm bảo thẻ RFID hoạt động
+- Kiểm tra nguồn cấp (VIN/3.3V), dây SPI và chân SS/RST đúng theo code
+
+## 📄 License
+
+Dự án này được phát triển cho mục đích học tập và nghiên cứu.
