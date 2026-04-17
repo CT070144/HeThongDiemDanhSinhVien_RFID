@@ -11,6 +11,8 @@ const AttendanceNotificationListener = () => {
   const { isAuthenticated } = useAuth();
   const [showCapture, setShowCapture] = useState(false);
   const [capturePreviewUrl, setCapturePreviewUrl] = useState(null);
+  // Chống gửi trùng xác thực khuôn mặt (UID -> lastSentAt ms)
+  const faceCaptureDedupRef = useRef(new Map());
 
   useEffect(() => {
     // Chỉ kết nối WebSocket khi đã đăng nhập
@@ -54,6 +56,16 @@ const AttendanceNotificationListener = () => {
           const rfid = payload?.rfid || undefined;
           if (!uid || `${uid}`.trim() === '') return;
 
+          // Nếu event bị broadcast/reconnect nhiều lần, tránh chụp+gửi 2 lần khiến hệ thống tự hiểu là "điểm danh ra"
+          const uidKey = `${uid}`.trim();
+          const nowMs = Date.now();
+          const last = faceCaptureDedupRef.current.get(uidKey) || 0;
+          if (nowMs - last < 5000) {
+            console.log("Duplicate request-face-capture ignored for uid:", uidKey);
+            return;
+          }
+          faceCaptureDedupRef.current.set(uidKey, nowMs);
+
           toast.info(`Yêu cầu xác thực khuôn mặt cho UID: ${uid}`, { autoClose: 3000 });
 
           // Mở camera và chụp 1 frame
@@ -73,13 +85,29 @@ const AttendanceNotificationListener = () => {
           stream.getTracks().forEach(t => t.stop());
           // Canvas → Blob
           const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+          if (!blob) {
+            throw new Error("Không tạo được ảnh từ camera (blob=null)");
+          }
           // Hiển thị overlay với ảnh đã chụp
           const previewUrl = URL.createObjectURL(blob);
           setCapturePreviewUrl(previewUrl);
           setShowCapture(true);
 
           // Gửi lên backend
-          await attendanceAPI.submitFace(`${uid}`, blob, maThietBi);
+          try {
+            await attendanceAPI.submitFace(`${uid}`, blob, maThietBi);
+          } catch (apiErr) {
+            // Backend có thể trả về 400 kèm body { status, name } (ví dụ ngoài giờ làm)
+            const data = apiErr?.response?.data;
+            const backendMessage =
+              (data && typeof data === 'object' && (data.name || data.message)) ? (data.name || data.message) : null;
+
+            if (backendMessage) {
+              toast.warning(`${backendMessage}`, { autoClose: 5000 });
+            } else {
+              toast.error("Gửi ảnh xác thực thất bại. Vui lòng thử lại.", { autoClose: 5000 });
+            }
+          }
           // Ẩn overlay sau khi nhận được response
           setShowCapture(false);
           if (previewUrl) {
@@ -88,7 +116,8 @@ const AttendanceNotificationListener = () => {
           }
          
         } catch (error) {
-          console.error("request-face-capture error:", error);
+          console.log(error);
+          console.error("request-face-capture error:", error.message);
           toast.error("Không thể chụp/gửi ảnh xác thực. Vui lòng kiểm tra quyền camera.", { autoClose: 5000 });
           // Đảm bảo đóng overlay nếu đang mở
           setShowCapture(false);
@@ -227,8 +256,11 @@ const AttendanceNotificationListener = () => {
           console.error("Error processing invalid-face notification:", error);
         }
       });
+      
+     
     }
 
+    
     // Cleanup function - disconnect socket khi component unmount
     return () => {
       if (socketRef.current) {

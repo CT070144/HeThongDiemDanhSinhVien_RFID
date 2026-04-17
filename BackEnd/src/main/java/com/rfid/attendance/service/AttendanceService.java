@@ -262,6 +262,9 @@ public class AttendanceService {
                 // Nếu sau giờ kết thúc ca cuối cùng trong ngày thì không ghi nhận
                 if (isAfterLastShiftEndSameDay(shifts, now)) {
                     System.out.println("ngoài giờ làm việc");
+
+                    socketIOServer.getAllClients().forEach(client -> client.sendEvent("out-of-time", "Ngoài giờ làm việc"));
+
                     throw new RuntimeException("Ngoài giờ làm (sau ca cuối)");
                 }
             }

@@ -88,7 +88,7 @@ const Login = () => {
               <Card.Body className="p-5">
                   <div className="text-center mb-4">
                     <h2 style={{color: 'rgb(32, 36, 40)'}} className="fw-bold">Đăng nhập</h2>
-                    <p style={{color: 'rgb(32, 36, 40)'}}>Hệ thống quản lý điểm danh RFID - KMA</p>
+                    <p style={{color: 'rgb(32, 36, 40)'}}>Hệ thống quản lý chấm công RFID - KMA</p>
                   </div>
 
                 {error && (

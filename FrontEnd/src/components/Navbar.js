@@ -35,7 +35,7 @@ const CustomNavbar = () => {
               alt="Logo"
             />
             <div className="d-flex flex-column">
-              <span style={{ fontSize: '20px', fontWeight: '600', lineHeight: '1.2' }}>Hệ thống chấm công </span>
+              <span style={{ fontSize: '20px', fontWeight: '600', lineHeight: '1.2' }}>Hệ thống chấm công bằng khuôn mặt và RFID</span>
               <small style={{ fontSize: '12px', opacity: 0.8, textAlign: 'left'}}>Học viện Kỹ thuật Mật mã</small>
             </div>
           </Navbar.Brand>

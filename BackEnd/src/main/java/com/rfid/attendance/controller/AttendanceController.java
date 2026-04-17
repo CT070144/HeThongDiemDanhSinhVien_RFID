@@ -289,17 +289,23 @@ public class AttendanceController {
                     return ResponseEntity.ok(new RfidResponse("faceid_not_found", ""));
                 }
 
-                var compare = pythonFaceEncodingService.compareFace(inputImage, faceid);
-                if (compare == null || !compare.isMatched()) {
-                    String payloadToSend = rfidTrim;
-                    try {
-                        payloadToSend = objectMapper.writeValueAsString(rfidTrim);
-                    } catch (JsonProcessingException ex) {
-                        // fallback: gửi thẳng chuỗi
+                try {
+                    var compare = pythonFaceEncodingService.compareFace(inputImage, faceid);
+                    if (compare == null || !compare.isMatched()) {
+                        String payloadToSend = rfidTrim;
+                        try {
+                            payloadToSend = objectMapper.writeValueAsString(rfidTrim);
+                        } catch (JsonProcessingException ex) {
+                            // fallback: gửi thẳng chuỗi
+                        }
+                        final String payloadFinal = payloadToSend;
+                        socketIOServer.getAllClients().forEach(client -> client.sendEvent("invalid-face", payloadFinal));
+                        return ResponseEntity.ok(new RfidResponse("face_mismatch", ""));
                     }
-                    final String payloadFinal = payloadToSend;
-                    socketIOServer.getAllClients().forEach(client -> client.sendEvent("invalid-face", payloadFinal));
-                    return ResponseEntity.ok(new RfidResponse("face_mismatch", ""));
+                }
+                catch (RuntimeException e)
+                {
+                    return ResponseEntity.ok(new RfidResponse("out_of_time", ""));
                 }
             }
 
