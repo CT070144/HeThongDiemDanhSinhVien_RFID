@@ -267,6 +267,7 @@ void TaskRFID(void* pv) {
     char uid[32] = {0};
     for (byte i = 0; i < mfrc522.uid.size; i++) {
       char hex[4];
+      // %02X: print 2 digits hex number, padding with 0 if needed
       snprintf(hex, sizeof(hex), "%02X", mfrc522.uid.uidByte[i]);
       strncat(uid, hex, sizeof(uid) - strlen(uid) - 1);
     }

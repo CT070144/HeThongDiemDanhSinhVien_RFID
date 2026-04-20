@@ -240,7 +240,7 @@ public class AttendanceController {
             socketIOServer.getAllClients().forEach(client -> client.sendEvent("request-face-capture", payloadFinal));
 
             // Trả về trạng thái yêu cầu xác thực khuôn mặt
-            return ResponseEntity.ok(new RfidResponse("Face_required", ""));
+            return ResponseEntity.ok(new RfidResponse("Face_required",removeAccent(sv.getTenSinhVien())));
         } catch (RuntimeException e) {
             System.out.println(e.getMessage());
             return ResponseEntity.badRequest().body(new RfidResponse("not_found", ""));

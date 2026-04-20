@@ -214,10 +214,7 @@ public class AttendanceService {
         return new ProcessResult(record, affected);
     }
 
-    /**
-     * Core RFID logic trả về record cuối + list record bị ảnh hưởng (create/update).
-     * Mode mới: chỉ xử lý trong NGÀY HIỆN TẠI.
-     */
+
     private ProcessResult processRfidAttendanceAndCollect(String rfid) {
         List<PhieuDiemDanh> affected = new ArrayList<>();
 
@@ -878,7 +875,6 @@ public class AttendanceService {
             LocalDateTime sStart = LocalDateTime.of(day, shift.getGioBatDau());
             LocalDateTime sEnd = LocalDateTime.of(day, shift.getGioKetThuc());
             if (!sEnd.isAfter(sStart)) {
-                // ca qua đêm: bỏ qua trong mode same-day
                 continue;
             }
             slots.add(new ShiftSlot(shift.getMaCa(), sStart, sEnd));

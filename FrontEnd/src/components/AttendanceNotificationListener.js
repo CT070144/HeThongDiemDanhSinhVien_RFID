@@ -3,13 +3,15 @@ import { toast } from 'react-toastify';
 import io from 'socket.io-client';
 import { useAuth } from '../contexts/AuthContext';
 import { attendanceAPI } from '../services/api';
-
+import { Spinner } from 'react-bootstrap';    
+import { FaCheckCircle, FaSpinner } from 'react-icons/fa';
 const AttendanceNotificationListener = () => {
   const socketRef = useRef(null);
   const notifiedIdsRef = useRef(new Set());
   const notifiedRfidsRef = useRef(new Set());
   const { isAuthenticated } = useAuth();
   const [showCapture, setShowCapture] = useState(false);
+  const [message, setMessage] = useState('Hệ thống đang xác thực khuôn mặt...');
   const [capturePreviewUrl, setCapturePreviewUrl] = useState(null);
   // Chống gửi trùng xác thực khuôn mặt (UID -> lastSentAt ms)
   const faceCaptureDedupRef = useRef(new Map());
@@ -109,6 +111,8 @@ const AttendanceNotificationListener = () => {
             }
           }
           // Ẩn overlay sau khi nhận được response
+          await new Promise(resolve => setTimeout(resolve,3000));
+          setMessage('Hệ thống đang xác thực khuôn mặt...');
           setShowCapture(false);
           if (previewUrl) {
             URL.revokeObjectURL(previewUrl);
@@ -166,7 +170,8 @@ const AttendanceNotificationListener = () => {
             const studentCode = attendanceRecord.maSinhVien;
             const room = attendanceRecord.phongHoc || 'N/A';
             const ca = attendanceRecord.ca ? `Ca ${attendanceRecord.ca}` : '';
-            
+            setMessage(`Xác thực khuôn mặt thành công ${studentName}`);
+           
             toast.success(
               `${studentName} (${studentCode}) đã chấm công - ${room} ${ca}`,
               {
@@ -242,7 +247,7 @@ const AttendanceNotificationListener = () => {
           const uidString = uid && `${uid}`.trim() !== '' ? `${uid}`.trim() : '';
 
           if (!uidString) return;
-
+         
           toast.warning(`Chấm công khuôn mặt không khớp: ${uidString}`, {
             position: "top-right",
             autoClose: 7000,
@@ -302,9 +307,10 @@ const AttendanceNotificationListener = () => {
         >
           <div
             style={{
-              background: '#111',
+              background: 'rgb(0, 0, 0)',
               padding: '12px',
               borderRadius: 8,
+              border: '2px solid rgb(255, 255, 255)',
               boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
               maxWidth: '90vw',
               maxHeight: '90vh',
@@ -314,7 +320,16 @@ const AttendanceNotificationListener = () => {
               gap: 8,
             }}
           >
-            <img
+          
+            <div style={{ color: '#fff', fontSize: 15, fontWeight: 'bold', opacity: 0.9 }}>
+              {message.includes('Xác thực khuôn mặt thành công') ? <FaCheckCircle style={{color: '#16a34a'}} /> : <FaSpinner style={{color: 'rgb(217, 255, 0)'}} />}
+              {message.includes('Xác thực khuôn mặt thành công') ? <span style={{color: '#16a34a', marginLeft: 10}}>{message}</span> : <span style={{color: 'rgb(217, 255, 0)', marginLeft: 10}}>{message}</span>}
+            </div>
+            <div className="position-relative mt-3" style={{height:8, overflow:'hidden', borderRadius:4}}>
+                        <div style={{position:'absolute', top:0, left:'-40%', width:'40%', height:'100%', background:'linear-gradient(90deg, transparent, rgba(33,37,41,0.5), transparent)', animation:'sweep 1.2s linear infinite'}} />
+                        <div style={{width:'100%', height:'100%', background:'repeating-linear-gradient(90deg, #e9ecef 0, #e9ecef 10px, #f8f9fa 10px, #f8f9fa 20px)'}} />
+           </div>
+           <img
               src={capturePreviewUrl}
               alt="Face capture preview"
               style={{
@@ -323,10 +338,7 @@ const AttendanceNotificationListener = () => {
                 objectFit: 'contain',
                 borderRadius: 6,
               }}
-            />
-            <div style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>
-              Đang gửi xác thực khuôn mặt...
-            </div>
+            /> 
           </div>
         </div>
       )}

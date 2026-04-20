@@ -53,7 +53,7 @@ const Dashboard = () => {
     attendanceStatus: {},
     weeklyAttendance: []
   });
-  const [dateFilterType, setDateFilterType] = useState('7days');
+  const [dateFilterType, setDateFilterType] = useState('30days');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
